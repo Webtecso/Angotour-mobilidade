@@ -102,7 +102,7 @@ export const ratingsRemote = {
 };
 
 
-// --- Alteracao de preco: POST /price-changes, PATCH /price-changes/:id/accept|report ---
+// --- Alteracao de preco: POST /price-changes, PATCH /price-changes/:id/report ---
 export interface RemotePriceChange {
   id: string;
   tripRef: string;
@@ -114,6 +114,6 @@ export interface RemotePriceChange {
 export const priceChangesRemote = {
   propose: (body: { tripRef: string; originalPriceKz: number; proposedPriceKz: number; reason?: string }) =>
     call<RemotePriceChange>('/price-changes', 'POST', body),
-  accept: (id: string) => call<RemotePriceChange>(`/price-changes/${id}/accept`, 'PATCH'),
   report: (id: string) => call<RemotePriceChange>(`/price-changes/${id}/report`, 'PATCH'),
 };
+

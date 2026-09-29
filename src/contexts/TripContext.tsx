@@ -49,7 +49,6 @@ interface TripContextValue {
   beginRide: () => void;
   completeTrip: (actualDistanceKm?: number, paymentState?: PaymentState) => void;
   cancelTrip: (reason?: string) => Promise<CancellationRisk | undefined>;
-  updateActiveTripPrice: (newPriceKz: number) => void;
   clearActiveTrip: () => void;
 }
 
@@ -242,10 +241,6 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     return risk;
   };
 
-  const updateActiveTripPrice: TripContextValue['updateActiveTripPrice'] = (newPriceKz) => {
-    setActiveTrip((trip) => (trip ? { ...trip, priceKz: newPriceKz } : trip));
-  };
-
   const clearActiveTrip = () => {
     setActiveTrip(null);
     resetTripDraft();
@@ -275,7 +270,6 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       beginRide,
       completeTrip,
       cancelTrip,
-      updateActiveTripPrice,
       clearActiveTrip,
     }),
     [tripDraft, activeTrip, scheduledTrips, womenModeEnabled]
@@ -289,5 +283,6 @@ export function useTrip() {
   if (!ctx) throw new Error('useTrip deve ser usado dentro de um <TripProvider>');
   return ctx;
 }
+
 
 
