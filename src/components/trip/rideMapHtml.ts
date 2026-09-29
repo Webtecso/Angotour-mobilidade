@@ -115,22 +115,42 @@ function applyRoute(coords, km, min) {
   if (cur.live) startLive();
 }
 
+var MAPBOX_TOKEN = "__MAPBOX_TOKEN__";
+
+function fetchMapboxRoute(o, d) {
+  var url = 'https://api.mapbox.com/directions/v5/mapbox/driving/' + o.longitude + ',' + o.latitude + ';' + d.longitude + ',' + d.latitude +
+    '?geometries=geojson&overview=full&access_token=' + MAPBOX_TOKEN;
+  return fetch(url).then(function (r) { return r.json(); }).then(function (j) {
+    var rt = j && j.routes && j.routes[0];
+    if (!rt) throw new Error('sem rota mapbox');
+    return { coords: rt.geometry.coordinates.map(function (c) { return [c[1], c[0]]; }), km: rt.distance / 1000, min: rt.duration / 60 };
+  });
+}
+
+function fetchOsrmRoute(o, d) {
+  var url = 'https://router.project-osrm.org/route/v1/driving/' + o.longitude + ',' + o.latitude + ';' + d.longitude + ',' + d.latitude + '?overview=full&geometries=geojson';
+  return fetch(url).then(function (r) { return r.json(); }).then(function (j) {
+    var rt = j && j.routes && j.routes[0];
+    if (!rt) throw new Error('sem rota osrm');
+    return { coords: rt.geometry.coordinates.map(function (c) { return [c[1], c[0]]; }), km: rt.distance / 1000, min: rt.duration / 60 };
+  });
+}
+
 function loadRoute() {
   var o = cur.origin, d = cur.destination, id = ++routeReq;
-  var url = 'https://router.project-osrm.org/route/v1/driving/' + o.longitude + ',' + o.latitude + ';' + d.longitude + ',' + d.latitude + '?overview=full&geometries=geojson';
-  fetch(url).then(function (r) { return r.json(); }).then(function (j) {
+  var useMapbox = MAPBOX_TOKEN && MAPBOX_TOKEN.indexOf('pk.') === 0;
+  var p = useMapbox
+    ? fetchMapboxRoute(o, d).catch(function () { return fetchOsrmRoute(o, d); })
+    : fetchOsrmRoute(o, d);
+  p.then(function (r) {
     if (id !== routeReq) return;
-    var rt = j && j.routes && j.routes[0];
-    if (!rt) throw new Error('sem rota');
-    var coords = rt.geometry.coordinates.map(function (c) { return [c[1], c[0]]; });
-    applyRoute(coords, rt.distance / 1000, rt.duration / 60);
+    applyRoute(r.coords, r.km, r.min);
   }).catch(function () {
     if (id !== routeReq) return;
     var km = hav(ll(o), ll(d));
     applyRoute([ll(o), ll(d)], km, km / 22 * 60);
   });
 }
-
 function startLive() {
   stopLive();
   if (!routeCoords || !cur.live || !line || !casing) return;
@@ -236,4 +256,5 @@ post({ type: 'ready' });
 </script>
 </body>
 </html>`;
+
 

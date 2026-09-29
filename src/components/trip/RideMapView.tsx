@@ -19,7 +19,8 @@ const hasMapboxToken = !!MAPBOX_ACCESS_TOKEN && MAPBOX_ACCESS_TOKEN.indexOf('pk.
 
 const MAP_HTML = RIDE_MAP_HTML
   .replace('__TILE_URL__', hasMapboxToken ? MAPBOX_TILE_URL : CARTO_TILE_URL)
-  .replace('__TILE_ATTRIBUTION__', hasMapboxToken ? MAPBOX_ATTRIBUTION : CARTO_ATTRIBUTION);
+  .replace('__TILE_ATTRIBUTION__', hasMapboxToken ? MAPBOX_ATTRIBUTION : CARTO_ATTRIBUTION)
+  .replace('__MAPBOX_TOKEN__', hasMapboxToken ? MAPBOX_ACCESS_TOKEN : '');
 
 export interface RouteInfo {
   distanceKm: number;
@@ -126,6 +127,7 @@ export default function RideMapView({
 const styles = StyleSheet.create({
   container: { overflow: 'hidden', width: '100%', backgroundColor: colors.surfaceAlt },
 });
+
 
 
 
