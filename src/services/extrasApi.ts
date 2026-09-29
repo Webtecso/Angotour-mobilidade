@@ -1,7 +1,7 @@
 ﻿import { API_BASE_URL } from '../constants/env';
 import { getToken } from './api';
 
-async function call<T>(path: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET', body?: unknown): Promise<T> {
+async function call<T>(path: string, method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' = 'GET', body?: unknown): Promise<T> {
   const token = await getToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method,
@@ -99,4 +99,21 @@ export const rewardsRemote = {
 export const ratingsRemote = {
   rate: (body: { tripRef: string; driverId?: string; stars: number; comment?: string }) =>
     call<unknown>('/ratings', 'POST', body),
+};
+
+
+// --- Alteracao de preco: POST /price-changes, PATCH /price-changes/:id/accept|report ---
+export interface RemotePriceChange {
+  id: string;
+  tripRef: string;
+  originalPriceKz: number;
+  proposedPriceKz: number;
+  status: string;
+}
+
+export const priceChangesRemote = {
+  propose: (body: { tripRef: string; originalPriceKz: number; proposedPriceKz: number; reason?: string }) =>
+    call<RemotePriceChange>('/price-changes', 'POST', body),
+  accept: (id: string) => call<RemotePriceChange>(`/price-changes/${id}/accept`, 'PATCH'),
+  report: (id: string) => call<RemotePriceChange>(`/price-changes/${id}/report`, 'PATCH'),
 };

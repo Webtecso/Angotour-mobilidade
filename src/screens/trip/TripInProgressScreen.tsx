@@ -14,6 +14,7 @@ import PriceChangeAlertModal from '../../components/trip/PriceChangeAlertModal';
 import VehicleScoreBadge from '../../components/trip/VehicleScoreBadge';
 import TripDetailsModal from '../../components/trip/TripDetailsModal';
 import { recordTripEvent } from '../../services/tripEventStore';
+import { acceptPriceChange, proposePriceChange, reportPriceChange } from '../../services/priceChangeSync';
 import { useAuth } from '../../contexts/AuthContext';
 import { ComfortPreferenceId, PaymentMethodType } from '../../types';
 import { HomeStackParamList } from '../../navigation/types';
@@ -121,11 +122,13 @@ export default function TripInProgressScreen({ navigation }: Props) {
     const newProposed = Math.round((activeTrip.priceKz * 1.2) / 50) * 50;
     setProposedPrice(newProposed);
     recordTripEvent(activeTrip.id, 'price_change_proposed', { originalPriceKz: activeTrip.priceKz, proposedPriceKz: newProposed }).catch(() => {});
+    proposePriceChange(activeTrip.id, activeTrip.priceKz, newProposed, 'simulacao');
     setPriceChangeVisible(true);
   };
 
   const handleAcceptPriceChange = () => {
     updateActiveTripPrice(proposedPrice);
+    acceptPriceChange(activeTrip.id);
     recordTripEvent(activeTrip.id, 'price_change_accepted', { proposedPriceKz: proposedPrice }).catch(() => {});
     setPriceChangeVisible(false);
   };
@@ -133,6 +136,7 @@ export default function TripInProgressScreen({ navigation }: Props) {
   const handleReportPriceChange = () => {
     setPriceChangeVisible(false);
     recordTripEvent(activeTrip.id, 'price_change_reported', { proposedPriceKz: proposedPrice }).catch(() => {});
+    reportPriceChange(activeTrip.id);
     Alert.alert('Problema reportado', 'Registamos a tentativa de alteracao de preco (simulacao). A nossa equipa de confianca vai analisar este motorista.');
   };
 
@@ -403,6 +407,10 @@ const styles = StyleSheet.create({
   detailsLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.sm, marginTop: spacing.xs },
   detailsLinkText: { ...typography.captionMedium, color: colors.textSecondary, marginLeft: spacing.xxs },
 });
+
+
+
+
 
 
 
