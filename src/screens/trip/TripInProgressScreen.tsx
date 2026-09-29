@@ -14,7 +14,7 @@ import PriceChangeAlertModal from '../../components/trip/PriceChangeAlertModal';
 import VehicleScoreBadge from '../../components/trip/VehicleScoreBadge';
 import TripDetailsModal from '../../components/trip/TripDetailsModal';
 import { recordTripEvent } from '../../services/tripEventStore';
-import { acceptPriceChange, proposePriceChange, reportPriceChange } from '../../services/priceChangeSync';
+import { proposePriceChange, reportPriceChange } from '../../services/priceChangeSync';
 import { useAuth } from '../../contexts/AuthContext';
 import { ComfortPreferenceId, PaymentMethodType } from '../../types';
 import { HomeStackParamList } from '../../navigation/types';
@@ -55,7 +55,7 @@ const PAYMENT_ICONS: Record<PaymentMethodType, React.ComponentProps<typeof Mater
 };
 
 export default function TripInProgressScreen({ navigation }: Props) {
-  const { activeTrip, beginRide, completeTrip, cancelTrip, updateActiveTripPrice } = useTrip();
+  const { activeTrip, beginRide, completeTrip, cancelTrip } = useTrip();
   const { emergencyContact, autoShareTripEnabled, womenModeEnabled } = useSettings();
   const { user } = useAuth();
   const [sosVisible, setSosVisible] = useState(false);
@@ -126,10 +126,7 @@ export default function TripInProgressScreen({ navigation }: Props) {
     setPriceChangeVisible(true);
   };
 
-  const handleAcceptPriceChange = () => {
-    updateActiveTripPrice(proposedPrice);
-    acceptPriceChange(activeTrip.id);
-    recordTripEvent(activeTrip.id, 'price_change_accepted', { proposedPriceKz: proposedPrice }).catch(() => {});
+  const handleKeepPrice = () => {
     setPriceChangeVisible(false);
   };
 
@@ -341,7 +338,7 @@ export default function TripInProgressScreen({ navigation }: Props) {
         onClose={() => setPriceChangeVisible(false)}
         originalPriceKz={activeTrip.priceKz}
         proposedPriceKz={proposedPrice}
-        onAccept={handleAcceptPriceChange}
+        onKeep={handleKeepPrice}
         onReport={handleReportPriceChange}
         onCancelProtected={handleCancelProtected}
       />
@@ -407,6 +404,7 @@ const styles = StyleSheet.create({
   detailsLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.sm, marginTop: spacing.xs },
   detailsLinkText: { ...typography.captionMedium, color: colors.textSecondary, marginLeft: spacing.xxs },
 });
+
 
 
 

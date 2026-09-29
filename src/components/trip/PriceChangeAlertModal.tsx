@@ -8,13 +8,13 @@ interface PriceChangeAlertModalProps {
   onClose: () => void;
   originalPriceKz: number;
   proposedPriceKz: number;
-  onAccept: () => void;
+  onKeep: () => void;
   onReport: () => void;
   onCancelProtected: () => void;
 }
 
 export default function PriceChangeAlertModal({
-  visible, onClose, originalPriceKz, proposedPriceKz, onAccept, onReport, onCancelProtected,
+  visible, onClose, originalPriceKz, proposedPriceKz, onKeep, onReport, onCancelProtected,
 }: PriceChangeAlertModalProps) {
   return (
     <Modal visible={visible} animationType="fade" transparent statusBarTranslucent onRequestClose={onClose}>
@@ -40,8 +40,8 @@ export default function PriceChangeAlertModal({
             </View>
           </View>
 
-          <TouchableOpacity style={styles.acceptButton} activeOpacity={0.85} onPress={onAccept}>
-            <Text style={styles.acceptButtonText}>Aceitar alteracao</Text>
+          <TouchableOpacity style={styles.acceptButton} activeOpacity={0.85} onPress={onKeep}>
+            <Text style={styles.acceptButtonText}>Manter o preco confirmado</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.reportButton} activeOpacity={0.85} onPress={onReport}>
             <Text style={styles.reportButtonText}>Reportar problema</Text>
@@ -73,3 +73,7 @@ const styles = StyleSheet.create({
   cancelButton: { width: '100%', backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: spacing.sm + 2, alignItems: 'center' },
   cancelButtonText: { ...typography.bodyMedium, color: colors.textInverse },
 });
+
+
+
+

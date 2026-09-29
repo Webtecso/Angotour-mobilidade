@@ -27,10 +27,7 @@ function resolvePending(tripRef: string, action: (id: string) => Promise<unknown
   p.then((id) => (id ? withTimeout(action(id)) : undefined)).catch(() => {});
 }
 
-export function acceptPriceChange(tripRef: string): void {
-  resolvePending(tripRef, (id) => priceChangesRemote.accept(id));
-}
-
 export function reportPriceChange(tripRef: string): void {
   resolvePending(tripRef, (id) => priceChangesRemote.report(id));
 }
+
