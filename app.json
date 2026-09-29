@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "AngoTour",
+    "slug": "angotour-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "angotour",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ao.angotour.mobile"
+    },
+    "android": {
+      "package": "ao.angotour.mobile"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-font",
+      "expo-video"
+    ]
+  }
+}
