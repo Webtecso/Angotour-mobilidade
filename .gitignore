@@ -1,6 +1,13 @@
 ﻿node_modules/
-.expo/
 dist/
-*.log
 .env
-*.bak
+.env.*
+!.env.example
+*.log
+*.sql
+check.sql
+uploads/
+storage/
+patch*.js
+patch*.cjs
+tmp-*.txt

@@ -109,7 +109,7 @@ function applyRoute(coords, km, min) {
   line = L.polyline(coords, { color: cur.color, weight: 5, opacity: 1, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(map);
   renderDest();
   if (!cur.live || !cur.live.follow) {
-    map.fitBounds(L.latLngBounds(coords), { paddingTopLeft: [36, 90], paddingBottomRight: [36, 44], animate: true });
+    map.fitBounds(L.latLngBounds(coords), { paddingTopLeft: [28, 60], paddingBottomRight: [28, 28], maxZoom: 17, animate: true });
   }
   post({ type: 'route', km: km, min: routeInfo.min });
   if (cur.live) startLive();
@@ -256,5 +256,6 @@ post({ type: 'ready' });
 </script>
 </body>
 </html>`;
+
 
 

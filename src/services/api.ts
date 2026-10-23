@@ -98,6 +98,13 @@ export interface RemoteDriver {
   rating: number;
 }
 
+export interface RemoteVehicle {
+  model: string;
+  plate: string;
+  color: string;
+  categoryId: string;
+}
+
 export interface RemoteTrip {
   id: string;
   priceKz: number;
@@ -105,6 +112,7 @@ export interface RemoteTrip {
   boardingCode?: string;
   driver?: RemoteDriver;
   driverLocation?: { latitude: number; longitude: number } | null;
+  vehicle?: RemoteVehicle | null;
 }
 
 interface TripPointBody {

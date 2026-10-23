@@ -14,10 +14,14 @@ interface LiveRideMapViewProps {
   onProgress?: (fraction: number) => void;
   onComplete?: () => void;
   onRouteReady?: (distanceKm: number) => void;
+  // Posicao real do motorista (vinda do servidor). Quando existe, o carro simulado esconde-se.
+  carMarkers?: Coordinates[];
+  hideSimulatedCar?: boolean;
 }
 
 export default function LiveRideMapView({
   from, to, durationMs = 12000, height = 220, style, progressColor, onProgress, onComplete, onRouteReady,
+  carMarkers, hideSimulatedCar,
 }: LiveRideMapViewProps) {
   return (
     <RideMapView
@@ -27,6 +31,8 @@ export default function LiveRideMapView({
       height={height}
       style={style}
       live={{ durationMs, follow: true }}
+      carMarkers={carMarkers}
+      hideSimulatedCar={hideSimulatedCar}
       showEta={false}
       onProgress={onProgress}
       onComplete={onComplete}

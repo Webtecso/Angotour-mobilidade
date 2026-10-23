@@ -14,6 +14,9 @@ export interface User {
   photoUrl?: string;
   preferredLanguage: PreferredLanguage;
   isVerified: boolean;
+  // none | pending | verified | rejected - a verificacao de identidade nunca
+  // se auto-aprova; fica pendente ate um revisor confirmar no Admin.
+  verificationStatus?: 'none' | 'pending' | 'verified' | 'rejected';
   angoPoints: number;
   createdAt: string;
 }

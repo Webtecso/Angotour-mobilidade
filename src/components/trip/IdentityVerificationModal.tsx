@@ -17,7 +17,7 @@ type Step = 'intro' | 'id_photo' | 'selfie' | 'processing' | 'done';
  * Verificado AngoTour" atraves de submitIdentityVerification (AuthContext).
  */
 export default function IdentityVerificationModal({ visible, onClose }: IdentityVerificationModalProps) {
-  const { submitIdentityVerification } = useAuth();
+  const { user, submitIdentityVerification } = useAuth();
   const [step, setStep] = useState<Step>('intro');
 
   const handleClose = () => {
@@ -92,11 +92,19 @@ export default function IdentityVerificationModal({ visible, onClose }: Identity
 
         {step === 'done' ? (
           <View style={styles.stepContent}>
-            <View style={[styles.iconBadge, { backgroundColor: colors.primaryLight }]}>
-              <Ionicons name="checkmark-circle" size={32} color={colors.primary} />
+            <View style={[styles.iconBadge, { backgroundColor: user?.isVerified ? colors.primaryLight : colors.amberLight }]}>
+              <Ionicons
+                name={user?.isVerified ? 'checkmark-circle' : 'time-outline'}
+                size={32}
+                color={user?.isVerified ? colors.primary : colors.amber}
+              />
             </View>
-            <Text style={styles.stepTitle}>Verificado com sucesso!</Text>
-            <Text style={styles.stepText}>Ja es um Utilizador Verificado AngoTour. O teu selo vai aparecer no perfil e durante as viagens.</Text>
+            <Text style={styles.stepTitle}>{user?.isVerified ? 'Verificado com sucesso!' : 'Documentos em analise'}</Text>
+            <Text style={styles.stepText}>
+              {user?.isVerified
+                ? 'Ja es um Utilizador Verificado AngoTour. O teu selo vai aparecer no perfil e durante as viagens.'
+                : 'Recebemos os teus documentos. Um revisor vai confirmar a tua identidade em breve - avisamos-te assim que o selo ficar ativo.'}
+            </Text>
             <TouchableOpacity style={styles.primaryButton} activeOpacity={0.85} onPress={handleClose}>
               <Text style={styles.primaryButtonText}>Concluir</Text>
             </TouchableOpacity>

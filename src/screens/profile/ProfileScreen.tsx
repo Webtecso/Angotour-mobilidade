@@ -87,6 +87,8 @@ export default function ProfileScreen() {
   };
 
   const isVerified = !!user?.isVerified;
+  const verificationStatus = user?.verificationStatus ?? 'none';
+  const isPending = verificationStatus === 'pending';
 
   return (
     <ScreenContainer style={styles.container}>
@@ -98,14 +100,18 @@ export default function ProfileScreen() {
         <Text style={styles.phone}>{user?.phone}</Text>
 
         <TouchableOpacity
-          style={[styles.verifiedBadge, isVerified && styles.verifiedBadgeOk]}
-          activeOpacity={isVerified ? 1 : 0.75}
-          disabled={isVerified}
+          style={[styles.verifiedBadge, isVerified && styles.verifiedBadgeOk, isPending && styles.verifiedBadgePending]}
+          activeOpacity={isVerified || isPending ? 1 : 0.75}
+          disabled={isVerified || isPending}
           onPress={() => setVerificationVisible(true)}
         >
-          <Ionicons name={isVerified ? 'shield-checkmark' : 'shield-outline'} size={16} color={isVerified ? colors.primaryDark : colors.textSecondary} />
-          <Text style={[styles.verifiedText, { color: isVerified ? colors.primaryDark : colors.textSecondary }]}>
-            {isVerified ? 'Utilizador Verificado' : 'Toca para verificar identidade'}
+          <Ionicons
+            name={isVerified ? 'shield-checkmark' : isPending ? 'time-outline' : 'shield-outline'}
+            size={16}
+            color={isVerified ? colors.primaryDark : isPending ? colors.amber : colors.textSecondary}
+          />
+          <Text style={[styles.verifiedText, { color: isVerified ? colors.primaryDark : isPending ? colors.amber : colors.textSecondary }]}>
+            {isVerified ? 'Utilizador Verificado' : isPending ? 'Documentos em analise' : 'Toca para verificar identidade'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -278,6 +284,7 @@ const styles = StyleSheet.create({
   phone: { ...typography.body, color: colors.textSecondary, marginTop: 2 },
   verifiedBadge: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm, minHeight: 34, backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.borderStrong, paddingVertical: 8, paddingHorizontal: spacing.md, borderRadius: radius.pill },
   verifiedBadgeOk: { backgroundColor: colors.primaryLight, borderColor: colors.primary },
+  verifiedBadgePending: { backgroundColor: colors.amberLight, borderColor: colors.amber },
   verifiedText: { ...typography.captionMedium, marginLeft: spacing.xxs },
   scroll: { paddingBottom: spacing.xxl },
   section: { marginTop: spacing.md },

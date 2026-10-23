@@ -117,3 +117,8 @@ export const priceChangesRemote = {
   report: (id: string) => call<RemotePriceChange>(`/price-changes/${id}/report`, 'PATCH'),
 };
 
+
+// --- Estado atual da viagem no servidor: GET /trips/:id (usado para sincronizar ao (re)ligar o socket) ---
+export const tripLiveRemote = {
+  get: (id: string) => call<{ id: string; status: string }>(`/trips/${id}`),
+};

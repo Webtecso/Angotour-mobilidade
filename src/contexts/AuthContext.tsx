@@ -2,6 +2,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User } from '../types';
 import { authApi, setToken, getToken } from '../services/api';
+import { profileRemote } from '../services/backendApi';
 
 const STORAGE_KEY = '@angotour/user';
 
@@ -113,16 +114,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   /**
-   * Verificacao de identidade (seccao 8-9 do documento de pesquisa): simula
-   * o envio do BI + selfie de verificacao para analise. Numa fase seguinte
-   * isto chama um endpoint real que liga ao Document Center do Admin
-   * (seccao 74).
+   * Verificacao de identidade (seccao 8-9 do documento de pesquisa): envia o
+   * BI + selfie ao servidor para analise. NUNCA se auto-aprova aqui - o
+   * servidor grava verificationStatus: 'pending' e so um revisor no Admin
+   * (Document Center, ainda por construir) aprova isVerified: true. Sem
+   * rede, cai para uma simulacao local igualmente "pending".
    */
   const submitIdentityVerification = async (): Promise<void> => {
-    await new Promise((resolve) => setTimeout(resolve, 1600));
     const current = userRef.current;
     if (!current) return;
-    persistUser({ ...current, isVerified: true });
+    try {
+      const result = await profileRemote.verifyIdentity();
+      persistUser({ ...current, isVerified: result.isVerified, verificationStatus: result.verificationStatus as User['verificationStatus'] });
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 1600));
+      persistUser({ ...current, verificationStatus: 'pending' });
+    }
   };
 
   // AngoPoints: por agora guardados so no telemovel (o servidor ainda nao tem endpoint de pontos).

@@ -74,6 +74,12 @@ export default function TripInProgressScreen({ navigation }: Props) {
     }
   }, [activeTrip, navigation]);
 
+  // Viagem concluida (pelo motorista ou pelo servidor): segue para o ecra de conclusao.
+  const isCompleted = activeTrip?.status === 'completed';
+  useEffect(() => {
+    if (isCompleted) navigation.replace('TripCompleted');
+  }, [isCompleted, navigation]);
+
   if (!activeTrip || !activeTrip.driver) {
     return null;
   }
@@ -105,7 +111,6 @@ export default function TripInProgressScreen({ navigation }: Props) {
       beginRide();
     } else {
       completeTrip(actualDistanceKm ?? undefined);
-      navigation.replace('TripCompleted');
     }
   };
 
@@ -169,7 +174,7 @@ export default function TripInProgressScreen({ navigation }: Props) {
           key={status}
           from={isArriving ? driver.coordinates : activeTrip.origin.coordinates}
           to={isArriving ? activeTrip.origin.coordinates : destination.coordinates}
-          height={200}
+          height={340}
           style={{ marginBottom: spacing.md }}
           onRouteReady={handleRouteReady}
           durationMs={Math.min(90000, Math.max(30000, (isArriving ? activeTrip.etaMinutes : activeTrip.durationMinutes) * 12000))}
@@ -312,7 +317,22 @@ export default function TripInProgressScreen({ navigation }: Props) {
           <Text style={styles.detailsLinkText}>Ver detalhes da viagem</Text>
         </TouchableOpacity>
 
-        <Button label={isArriving ? 'Confirmar embarque' : 'Concluir viagem'} onPress={handlePrimaryAction} style={{ marginTop: spacing.sm }} />
+        {activeTrip.remoteId ? (
+          <View style={styles.waitingCard}>
+            <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
+            <Text style={styles.waitingText}>
+              {isArriving ? 'O motorista confirma o embarque com o teu codigo.' : 'A viagem termina quando o motorista a concluir.'}
+            </Text>
+          </View>
+        ) : null}
+        {!activeTrip.remoteId || __DEV__ ? (
+          <Button
+            label={(isArriving ? 'Confirmar embarque' : 'Concluir viagem') + (activeTrip.remoteId ? ' (teste)' : '')}
+            variant={activeTrip.remoteId ? 'outline' : undefined}
+            onPress={handlePrimaryAction}
+            style={{ marginTop: spacing.sm }}
+          />
+        ) : null}
         <Button label="Cancelar viagem" variant="outline" onPress={() => setCancelModalVisible(true)} style={{ marginTop: spacing.sm }} />
       </ScrollView>
 
@@ -403,7 +423,10 @@ const styles = StyleSheet.create({
   secondaryActionText: { ...typography.captionMedium, color: colors.textPrimary, marginLeft: 4 },
   detailsLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.sm, marginTop: spacing.xs },
   detailsLinkText: { ...typography.captionMedium, color: colors.textSecondary, marginLeft: spacing.xxs },
+  waitingCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.sm, marginTop: spacing.sm },
+  waitingText: { ...typography.caption, color: colors.textSecondary, marginLeft: spacing.xs, flex: 1 },
 });
+
 
 
 

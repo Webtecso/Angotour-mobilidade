@@ -23,6 +23,7 @@ async function call<T>(path: string, method: 'GET' | 'POST' | 'PATCH' = 'GET', b
 export interface RemoteProfile {
   isVerified: boolean;
   angoPoints: number;
+  verificationStatus?: string;
 }
 
 export const usersRemote = {

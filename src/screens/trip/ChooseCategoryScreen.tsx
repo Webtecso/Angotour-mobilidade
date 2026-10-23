@@ -481,7 +481,7 @@ export default function ChooseCategoryScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  mapArea: { flex: 0.36 },
+  mapArea: { flex: 0.46 },
   map: { borderRadius: 0, height: undefined, flex: 1 },
   mapTopBar: { position: 'absolute', top: spacing.sm, left: spacing.md },
   backButton: { backgroundColor: colors.surface, borderRadius: radius.pill, padding: spacing.xs, overflow: 'hidden' },
@@ -552,6 +552,7 @@ const styles = StyleSheet.create({
   priceInfoText: { ...typography.tiny, color: colors.textSecondary, marginLeft: 4, textDecorationLine: 'underline' },
   footerPrice: { ...typography.subtitle, color: colors.textPrimary },
 });
+
 
 
 

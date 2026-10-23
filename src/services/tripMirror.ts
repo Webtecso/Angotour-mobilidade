@@ -1,16 +1,30 @@
 ﻿import { TripRequest } from '../types';
-import { tripsApi } from './api';
+import { tripsApi, RemoteDriver, RemoteVehicle } from './api';
 
 /**
- * A viagem continua 100% local (UI e motorista simulado iguais). Em paralelo, o servidor
- * regista a viagem para dar historico, pontos e saldo reais. As chamadas correm por ordem
- * (criar -> atribuir -> iniciar -> concluir/cancelar) e qualquer falha e ignorada.
+ * A viagem continua 100% local (UI responde na hora com um motorista mock).
+ * Em paralelo, o servidor regista a viagem a serio e atribui um motorista
+ * real da tabela drivers. Quando essa resposta chega, onRealDriverAssigned
+ * e chamado para corrigir os dados mostrados ao passageiro (nome, avaliacao,
+ * telefone e localizacao reais) - sem bloquear nem atrasar a UI inicial.
  */
 interface Mirror {
   chain: Promise<unknown>;
   remoteId?: string;
   started?: boolean;
   finished?: boolean;
+}
+
+export interface RealDriverAssignment {
+  driver: RemoteDriver;
+  driverLocation: { latitude: number; longitude: number } | null;
+  // Codigo de embarque real, gerado pelo servidor no create() - e o unico
+  // que driverConfirmBoarding aceita do lado do motorista.
+  boardingCode?: string;
+  // Veiculo aprovado do motorista (null para motoristas demo).
+  vehicle?: RemoteVehicle | null;
+  // Id da viagem no servidor (e o que identifica a sala do socket).
+  remoteId?: string;
 }
 
 const mirrors = new Map<string, Mirror>();
@@ -28,7 +42,11 @@ function enqueue(localId: string, action: string, task: (remoteId: string) => Pr
     .catch((e) => warn(action, e));
 }
 
-export function mirrorCreateAndAssign(trip: TripRequest, preferFemale: boolean): void {
+export function mirrorCreateAndAssign(
+  trip: TripRequest,
+  preferFemale: boolean,
+  onRealDriverAssigned?: (localTripId: string, assignment: RealDriverAssignment) => void
+): void {
   if (mirrors.has(trip.id)) return;
   const m: Mirror = { chain: Promise.resolve() };
   mirrors.set(trip.id, m);
@@ -61,7 +79,17 @@ export function mirrorCreateAndAssign(trip: TripRequest, preferFemale: boolean):
       m.remoteId = created.id;
 
       const assignOpts = { preferFemale, preferDriverId: undefined as string | undefined };
-      await tripsApi.assignDriver(created.id, assignOpts);
+      const assigned = await tripsApi.assignDriver(created.id, assignOpts);
+
+      if (assigned.driver && onRealDriverAssigned) {
+        onRealDriverAssigned(trip.id, {
+          driver: assigned.driver,
+          driverLocation: assigned.driverLocation ?? null,
+          boardingCode: assigned.boardingCode ?? created.boardingCode,
+          remoteId: created.id,
+          vehicle: assigned.vehicle ?? null,
+        });
+      }
     })
     .catch((e) => warn('criar viagem', e));
 }
@@ -86,3 +114,5 @@ export function mirrorCancel(localId: string, reason?: string): void {
   m.finished = true;
   enqueue(localId, 'cancelar viagem', (id) => tripsApi.cancel(id, reason));
 }
+
+

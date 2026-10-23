@@ -1,9 +1,12 @@
-﻿import React, { createContext, useContext, useMemo, useState } from 'react';
+﻿import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { ComfortPreferenceId, PaymentMethodType, PaymentState, SavedPlace, TripRequest, VehicleCategoryId } from '../types';
-import { chooseDriver, computeChangeKz, defaultOrigin, estimateTrip, generateBoardingCode } from '../services/mockData';
+import { chooseDriver, computeChangeKz, defaultOrigin, estimateTrip, generateBoardingCode, mockDrivers } from '../services/mockData';
 import { CancellationRisk, recordCancellation } from '../services/cancellationStore';
 import { recordTripEvent } from '../services/tripEventStore';
-import { mirrorCancel, mirrorComplete, mirrorCreateAndAssign, mirrorStart } from '../services/tripMirror';
+import { mirrorCancel, mirrorComplete, mirrorCreateAndAssign, mirrorStart, RealDriverAssignment } from '../services/tripMirror';
+import { connectTripSocket } from '../services/tripSocket';
+import { tripLiveRemote } from '../services/extrasApi';
+import { syncPricing } from '../services/pricingSync';
 import { useSettings } from './SettingsContext';
 
 export interface RequestedForSomeoneElse {
@@ -170,8 +173,48 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     };
   }
 
+  /**
+   * Quando o backend confirma qual motorista real foi atribuido, corrige o
+   * motorista mostrado ao passageiro: identidade (nome, telefone, avaliacao)
+   * e localizacao vem do servidor; os detalhes cosmeticos (modelo, matricula,
+   * cor, pontuacao do veiculo, genero) vem do registo local correspondente
+   * ao mesmo telefone, quando existir (os motoristas demo do backend usam
+   * os mesmos numeros dos 3 motoristas mock). So aplica se a viagem ativa
+   * ainda for a mesma (nao foi cancelada/substituida entretanto).
+   */
+  const handleRealDriverAssigned = (localTripId: string, assignment: RealDriverAssignment) => {
+    setActiveTrip((trip) => {
+      if (!trip || trip.id !== localTripId) return trip;
+      const cosmetic = mockDrivers.find((d) => d.phone === assignment.driver.phone);
+      const realDriver = {
+        id: assignment.driver.id,
+        fullName: assignment.driver.fullName,
+        phone: assignment.driver.phone,
+        rating: assignment.driver.rating,
+        vehicleModel: assignment.vehicle?.model ?? cosmetic?.vehicleModel ?? trip.driver?.vehicleModel ?? 'Veiculo AngoTour',
+        vehiclePlate: assignment.vehicle?.plate ?? cosmetic?.vehiclePlate ?? trip.driver?.vehiclePlate ?? '',
+        vehicleColor: assignment.vehicle?.color ?? cosmetic?.vehicleColor ?? trip.driver?.vehicleColor ?? '',
+        vehicleScore: cosmetic?.vehicleScore ?? trip.driver?.vehicleScore ?? { safety: 5, comfort: 4, cleanliness: 5 },
+        gender: cosmetic?.gender ?? trip.driver?.gender ?? 'male',
+        coordinates: assignment.driverLocation ?? cosmetic?.coordinates ?? trip.driver?.coordinates ?? trip.origin.coordinates,
+      };
+      // O codigo gerado localmente (generateBoardingCode) e so um placeholder
+      // visual ate aqui. Assim que o servidor confirma a atribuicao real,
+      // troca-se pelo codigo que o servidor de facto vai validar - sem isto,
+      // um motorista real nunca consegue confirmar o embarque.
+      return {
+        ...trip,
+        driver: realDriver,
+        boardingCode: assignment.boardingCode ?? trip.boardingCode,
+        remoteId: assignment.remoteId ?? trip.remoteId,
+      };
+    });
+  };
+
   // AngoTour Ela: com o Modo Mulher ativo, prioriza motorista mulher se houver.
   // Motorista favorito: tenta atribui-lo primeiro se for compativel.
+  // A UI responde na hora com um motorista mock; quando o backend confirma o
+  // motorista real atribuido, handleRealDriverAssigned corrige os dados.
   const assignDriver: TripContextValue['assignDriver'] = (preferFemaleDriver, preferredDriverId) => {
     const preferFemale = preferFemaleDriver ?? womenModeEnabled;
     const driver = chooseDriver(preferFemale, preferredDriverId);
@@ -179,7 +222,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       const trip = buildTripFromDraft(draft, 'driver_assigned', driver);
       if (trip) {
         setActiveTrip(trip);
-        mirrorCreateAndAssign(trip, preferFemale);
+        mirrorCreateAndAssign(trip, preferFemale, handleRealDriverAssigned);
         recordTripEvent(trip.id, 'trip_created', { distanceKm: trip.distanceKm, priceKz: trip.priceKz }).catch(() => {});
         recordTripEvent(trip.id, 'driver_assigned', { driverId: trip.driver?.id ?? '', womenMode: preferFemale ? 1 : 0 }).catch(() => {});
       }
@@ -246,6 +289,40 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     resetTripDraft();
   };
 
+  // O servidor e a fonte da verdade sobre o estado da viagem: quando o motorista
+  // inicia ou conclui, a viagem do passageiro obedece. So ouve viagens que o
+  // servidor conhece (remoteId); sem remoteId o fluxo local continua como antes.
+  // Tarifas atuais do servidor (editaveis no painel). Sem rede, ficam as locais.
+  useEffect(() => {
+    syncPricing();
+  }, []);
+
+  const remoteTripId = activeTrip?.remoteId;
+  useEffect(() => {
+    if (!remoteTripId) return;
+
+    const applyServerStatus = (status: string) => {
+      setActiveTrip((trip) => {
+        if (!trip || trip.remoteId !== remoteTripId) return trip;
+        if (status === 'in_progress' && trip.status !== 'in_progress' && trip.status !== 'completed') {
+          recordTripEvent(trip.id, 'ride_started', { source: 'driver' }).catch(() => {});
+          return { ...trip, status: 'in_progress' };
+        }
+        if (status === 'completed' && trip.status !== 'completed') {
+          recordTripEvent(trip.id, 'completed', { priceKz: trip.priceKz }).catch(() => {});
+          return { ...trip, status: 'completed' };
+        }
+        return trip;
+      });
+    };
+
+    const syncNow = () => {
+      tripLiveRemote.get(remoteTripId).then((t) => applyServerStatus(t.status)).catch(() => {});
+    };
+
+    return connectTripSocket(remoteTripId, applyServerStatus, syncNow);
+  }, [remoteTripId]);
+
   const value = useMemo(
     () => ({
       tripDraft,
@@ -283,6 +360,4 @@ export function useTrip() {
   if (!ctx) throw new Error('useTrip deve ser usado dentro de um <TripProvider>');
   return ctx;
 }
-
-
 
