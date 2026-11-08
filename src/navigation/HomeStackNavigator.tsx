@@ -12,6 +12,8 @@ import TripCompletedScreen from '../screens/trip/TripCompletedScreen';
 const Stack = createNativeStackNavigator<HomeStackParamList>();
 
 import AllDestinationsScreen from '../screens/search/AllDestinationsScreen';
+import MonthlyRequestScreen from '../screens/monthly/MonthlyRequestScreen';
+import MonthlyContractsScreen from '../screens/monthly/MonthlyContractsScreen';
 
 export default function HomeStackNavigator() {
   return (
@@ -24,6 +26,8 @@ export default function HomeStackNavigator() {
       <Stack.Screen name="TripInProgress" component={TripInProgressScreen} />
       <Stack.Screen name="TripCompleted" component={TripCompletedScreen} />
       <Stack.Screen name="AllDestinations" component={AllDestinationsScreen} />
+      <Stack.Screen name="MonthlyRequest" component={MonthlyRequestScreen} />
+      <Stack.Screen name="MonthlyContracts" component={MonthlyContractsScreen} />
     </Stack.Navigator>
   );
 }

@@ -40,6 +40,7 @@ interface RideMapViewProps {
   onRouteInfo?: (info: RouteInfo) => void;
   // Modo viagem em curso: o carro percorre a rota, a parte feita fica cinzenta.
   live?: { durationMs: number; follow?: boolean };
+  hideSimulatedCar?: boolean;
   onProgress?: (fraction: number) => void;
   onComplete?: () => void;
   showEta?: boolean;
@@ -50,7 +51,7 @@ const SOURCE = { html: MAP_HTML };
 
 export default function RideMapView({
   origin, destination, carMarkers, routeColor, initialCenter, height = 220, style, zoom = 14,
-  onCenterChange, onRouteInfo, live, onProgress, onComplete, showEta = true, etaLabel,
+  onCenterChange, onRouteInfo, live, hideSimulatedCar, onProgress, onComplete, showEta = true, etaLabel,
 }: RideMapViewProps) {
   const webRef = useRef<WebView>(null);
   const readyRef = useRef(false);
@@ -67,6 +68,7 @@ export default function RideMapView({
     zoom,
     interactive: !!onCenterChange,
     live: live ?? null,
+    hideSimulatedCar: hideSimulatedCar ?? false,
     showEta,
     etaLabel: etaLabel ?? null,
   });
@@ -127,6 +129,9 @@ export default function RideMapView({
 const styles = StyleSheet.create({
   container: { overflow: 'hidden', width: '100%', backgroundColor: colors.surfaceAlt },
 });
+
+
+
 
 
 

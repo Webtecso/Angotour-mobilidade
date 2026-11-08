@@ -32,6 +32,7 @@ export interface TripDraft {
 interface TripContextValue {
   tripDraft: TripDraft;
   activeTrip: TripRequest | null;
+  driverLocation: { latitude: number; longitude: number } | null;
   scheduledTrips: TripRequest[];
   setOrigin: (place: SavedPlace) => void;
   setDestination: (place: SavedPlace, distanceKm: number) => void;
@@ -297,8 +298,10 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     syncPricing();
   }, []);
 
+  const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const remoteTripId = activeTrip?.remoteId;
   useEffect(() => {
+    setDriverLocation(null);
     if (!remoteTripId) return;
 
     const applyServerStatus = (status: string) => {
@@ -320,13 +323,14 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       tripLiveRemote.get(remoteTripId).then((t) => applyServerStatus(t.status)).catch(() => {});
     };
 
-    return connectTripSocket(remoteTripId, applyServerStatus, syncNow);
+    return connectTripSocket(remoteTripId, applyServerStatus, syncNow, setDriverLocation);
   }, [remoteTripId]);
 
   const value = useMemo(
     () => ({
       tripDraft,
       activeTrip,
+      driverLocation,
       scheduledTrips,
       setOrigin,
       setDestination,
@@ -349,7 +353,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       cancelTrip,
       clearActiveTrip,
     }),
-    [tripDraft, activeTrip, scheduledTrips, womenModeEnabled]
+    [tripDraft, activeTrip, driverLocation, scheduledTrips, womenModeEnabled]
   );
 
   return <TripContext.Provider value={value}>{children}</TripContext.Provider>;
@@ -360,4 +364,9 @@ export function useTrip() {
   if (!ctx) throw new Error('useTrip deve ser usado dentro de um <TripProvider>');
   return ctx;
 }
+
+
+
+
+
 

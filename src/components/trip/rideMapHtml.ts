@@ -228,7 +228,7 @@ window.setState = function (s) {
   }
 
   if (s.live) { if (originM) { map.removeLayer(originM); originM = null; } } else { setOrigin(s.origin); }
-  setCars(s.live ? [] : (s.cars || []));
+  setCars((s.live && !s.hideSimulatedCar) ? [] : (s.cars || []));
 
   var od = s.destination ? (s.origin.latitude + ',' + s.origin.longitude + '>' + s.destination.latitude + ',' + s.destination.longitude) : '';
   var sig = JSON.stringify(s.live || null);
@@ -247,7 +247,7 @@ window.setState = function (s) {
     renderDest();
     if (sig !== liveSig) {
       liveSig = sig;
-      if (s.live) startLive(); else stopLive();
+      if (s.live && !s.hideSimulatedCar) startLive(); else stopLive();
     }
   }
 };
@@ -256,6 +256,8 @@ post({ type: 'ready' });
 </script>
 </body>
 </html>`;
+
+
 
 
 

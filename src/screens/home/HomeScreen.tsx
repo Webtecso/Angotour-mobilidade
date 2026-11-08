@@ -177,6 +177,18 @@ export default function HomeScreen({ navigation }: Props) {
           ))}
         </View>
 
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('MonthlyRequest')}
+          style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(16,185,129,0.12)', borderWidth: 1, borderColor: 'rgba(16,185,129,0.35)', borderRadius: 16, padding: 14, marginBottom: 16 }}
+        >
+          <Ionicons name="calendar" size={22} color={colors.primary} />
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 15 }}>Mobilidade mensal</Text>
+            <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>Transporte recorrente com mensalidade fixa</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+        </TouchableOpacity>
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionHeader}>Destinos populares</Text>
           <TouchableOpacity onPress={() => navigation.navigate('AllDestinations')}>

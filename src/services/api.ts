@@ -178,7 +178,37 @@ export interface IncidentApiRecord {
 }
 
 export const incidentsApi = {
-  create: (body: { kind: 'incident' | 'lost_item'; category: string; description?: string; tripRef?: string }) =>
+  create: (body: { kind: 'incident' | 'lost_item' | 'sos'; category: string; description?: string; tripRef?: string }) =>
     request<IncidentApiRecord>('/support/incidents', { method: 'POST', body, auth: true }),
   mine: () => request<IncidentApiRecord[]>('/support/incidents/me', { auth: true }),
+  updateLocation: (caseNumber: string, latitude: number, longitude: number) =>
+    request<IncidentApiRecord>('/support/incidents/' + caseNumber + '/location', { method: 'POST', body: { latitude, longitude }, auth: true }),
+  resolve: (caseNumber: string) =>
+    request<IncidentApiRecord>('/support/incidents/' + caseNumber + '/resolve', { method: 'POST', auth: true }),
+};
+
+
+// --- AngoTour Mensal: pedido, proposta, aceitacao e pagamento ---
+export interface MonthlyPlanView { id: string; name: string; modality: 'shared' | 'individual'; priceKz: number; weeklyFrequency: number; tripsPerDay: number; conditions?: string }
+export interface MonthlyRequestView { id: string; modality: string; originLabel: string; destinationLabel: string; status: string; startDate: string; createdAt: string }
+export interface MonthlyContractView {
+  id: string; modality: string; priceKz: number; startDate: string; endDate?: string | null; status: string;
+  paymentReference?: string | null; proposalExpiresAt?: string | null; driverId?: string | null; vehicleId?: string | null;
+}
+
+export const monthlyApi = {
+  plans: () => request<MonthlyPlanView[]>('/monthly/plans', { auth: true }),
+  createRequest: (body: {
+    modality: 'shared' | 'individual'; originLabel: string; originLatitude: number; originLongitude: number;
+    destinationLabel: string; destinationLatitude: number; destinationLongitude: number;
+    preferredDays: string[]; departureTime: string; returnTime?: string; startDate: string; passengerCount?: number; specialNeeds?: string;
+  }) => request<MonthlyRequestView>('/monthly/requests', { method: 'POST', body, auth: true }),
+  myRequests: () => request<MonthlyRequestView[]>('/monthly/requests/me', { auth: true }),
+  myContracts: () => request<MonthlyContractView[]>('/monthly/contracts/me', { auth: true }),
+  accept: (id: string) => request<MonthlyContractView>(`/monthly/contracts/${id}/accept`, { method: 'POST', body: { conditionsAccepted: true }, auth: true }),
+  reject: (id: string) => request<MonthlyContractView>(`/monthly/contracts/${id}/reject`, { method: 'POST', auth: true }),
+  cancelPreview: (id: string) => request<{ refundKz: number; remaining: number; total: number }>(`/monthly/contracts/${id}/cancel-preview`, { auth: true }),
+  cancel: (id: string) => request<MonthlyContractView>(`/monthly/contracts/${id}/cancel`, { method: 'POST', auth: true }),
+  renew: (id: string) => request<MonthlyContractView>(`/monthly/contracts/${id}/renew`, { method: 'POST', auth: true }),
+  confirmPayment: (id: string) => request<MonthlyContractView>(`/monthly/contracts/${id}/payment/confirm`, { method: 'POST', auth: true }),
 };

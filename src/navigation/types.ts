@@ -16,6 +16,8 @@ export type HomeStackParamList = {
   TripInProgress: undefined;
   TripCompleted: undefined;
   AllDestinations: undefined;
+  MonthlyRequest: undefined;
+  MonthlyContracts: undefined;
 };
 
 export type MainTabParamList = {

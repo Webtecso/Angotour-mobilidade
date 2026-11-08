@@ -55,7 +55,7 @@ const PAYMENT_ICONS: Record<PaymentMethodType, React.ComponentProps<typeof Mater
 };
 
 export default function TripInProgressScreen({ navigation }: Props) {
-  const { activeTrip, beginRide, completeTrip, cancelTrip } = useTrip();
+  const { activeTrip, beginRide, completeTrip, cancelTrip, driverLocation } = useTrip();
   const { emergencyContact, autoShareTripEnabled, womenModeEnabled } = useSettings();
   const { user } = useAuth();
   const [sosVisible, setSosVisible] = useState(false);
@@ -178,6 +178,8 @@ export default function TripInProgressScreen({ navigation }: Props) {
           style={{ marginBottom: spacing.md }}
           onRouteReady={handleRouteReady}
           durationMs={Math.min(90000, Math.max(30000, (isArriving ? activeTrip.etaMinutes : activeTrip.durationMinutes) * 12000))}
+          carMarkers={driverLocation ? [driverLocation] : undefined}
+          hideSimulatedCar={!!driverLocation}
         />
 
         <Text style={styles.headerSubtitle}>
@@ -426,6 +428,8 @@ const styles = StyleSheet.create({
   waitingCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.sm, marginTop: spacing.sm },
   waitingText: { ...typography.caption, color: colors.textSecondary, marginLeft: spacing.xs, flex: 1 },
 });
+
+
 
 
 

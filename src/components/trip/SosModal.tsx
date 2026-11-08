@@ -1,7 +1,9 @@
 ﻿import React, { useEffect, useRef, useState } from 'react';
 import { Linking, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { colors, radius, spacing, typography } from '../../constants/theme';
+import { incidentsApi } from '../../services/api';
 
 interface SosModalProps {
   visible: boolean;
@@ -22,6 +24,40 @@ export default function SosModal({
   const [phase, setPhase] = useState<'countdown' | 'sent'>('countdown');
   const [secondsLeft, setSecondsLeft] = useState(COUNTDOWN_SECONDS);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const caseNumberRef = useRef<string | null>(null);
+  const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const shareLocationOnce = async (caseNumber: string) => {
+    try {
+      const { status } = await Location.getForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        const req = await Location.requestForegroundPermissionsAsync();
+        if (req.status !== 'granted') return;
+      }
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      await incidentsApi.updateLocation(caseNumber, position.coords.latitude, position.coords.longitude);
+    } catch {
+      // falha de localizacao/rede nao deve impedir o resto do fluxo de SOS
+    }
+  };
+
+  const sendSosToBackend = async () => {
+    try {
+      const incident = await incidentsApi.create({
+        kind: 'sos',
+        category: 'SOS em viagem',
+        description: 'SOS ativado com ' + driverName + ' (' + vehiclePlate + ').',
+        tripRef: tripId,
+      });
+      caseNumberRef.current = incident.caseNumber;
+      await shareLocationOnce(incident.caseNumber);
+      locationIntervalRef.current = setInterval(() => {
+        if (caseNumberRef.current) shareLocationOnce(caseNumberRef.current);
+      }, 20000);
+    } catch {
+      // sem rede: o alerta local (SMS/112) continua a funcionar mesmo assim
+    }
+  };
 
   useEffect(() => {
     if (!visible) return;
@@ -32,6 +68,7 @@ export default function SosModal({
         if (s <= 1) {
           if (timerRef.current) clearInterval(timerRef.current);
           setPhase('sent');
+          sendSosToBackend();
           onSent?.();
           return 0;
         }
@@ -40,6 +77,9 @@ export default function SosModal({
     }, 1000);
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      if (locationIntervalRef.current) clearInterval(locationIntervalRef.current);
+      locationIntervalRef.current = null;
+      caseNumberRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -82,7 +122,7 @@ export default function SosModal({
               </View>
               <Text style={styles.title}>Alerta SOS enviado</Text>
               <Text style={styles.subtitle}>
-                Enviado as {sentAt} (simulacao). Numa proxima fase isto liga a um backend real de emergencia e as autoridades locais.
+                Enviado as {sentAt}. A tua localizacao esta a ser partilhada em tempo real com a central de seguranca AngoTour.
               </Text>
 
               <View style={styles.detailsBox}>
@@ -146,3 +186,8 @@ const styles = StyleSheet.create({
   closeButton: { paddingVertical: spacing.sm },
   closeButtonText: { ...typography.captionMedium, color: colors.textSecondary },
 });
+
+
+
+
+
