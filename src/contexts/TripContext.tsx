@@ -1,9 +1,11 @@
 ﻿import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { ComfortPreferenceId, PaymentMethodType, PaymentState, SavedPlace, TripRequest, VehicleCategoryId } from '../types';
-import { chooseDriver, computeChangeKz, defaultOrigin, estimateTrip, generateBoardingCode, mockDrivers } from '../services/mockData';
+import { computeChangeKz, defaultOrigin, estimateTrip, generateBoardingCode, mockDrivers } from '../services/mockData';
 import { CancellationRisk, recordCancellation } from '../services/cancellationStore';
 import { recordTripEvent } from '../services/tripEventStore';
-import { mirrorCancel, mirrorComplete, mirrorCreateAndAssign, mirrorStart, RealDriverAssignment } from '../services/tripMirror';
+import { mirrorCancel, mirrorComplete, mirrorCreateAndAssign, mirrorStart, RealDriverAssignment, mirrorCreateScheduled, mirrorRemoteId } from '../services/tripMirror';
+import { tripsApi } from '../services/api';
+import { Alert } from 'react-native';
 import { connectTripSocket } from '../services/tripSocket';
 import { tripLiveRemote } from '../services/extrasApi';
 import { syncPricing } from '../services/pricingSync';
@@ -48,6 +50,7 @@ interface TripContextValue {
   setPaymentMethod: (type: PaymentMethodType, cashNoteKz?: number) => void;
   resetTripDraft: () => void;
   assignDriver: (preferFemaleDriver?: boolean, preferredDriverId?: string) => void;
+  assignError: string | null;
   scheduleTrip: () => TripRequest | null;
   cancelScheduledTrip: (tripId: string) => void;
   beginRide: () => void;
@@ -216,14 +219,20 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   // Motorista favorito: tenta atribui-lo primeiro se for compativel.
   // A UI responde na hora com um motorista mock; quando o backend confirma o
   // motorista real atribuido, handleRealDriverAssigned corrige os dados.
+  const [assignError, setAssignError] = useState<string | null>(null);
+  const onAssignFailed = (_localId: string, message: string) => {
+    setAssignError(message);
+    setActiveTrip(null);
+  };
+
   const assignDriver: TripContextValue['assignDriver'] = (preferFemaleDriver, preferredDriverId) => {
     const preferFemale = preferFemaleDriver ?? womenModeEnabled;
-    const driver = chooseDriver(preferFemale, preferredDriverId);
+    setAssignError(null);
     setTripDraft((draft) => {
-      const trip = buildTripFromDraft(draft, 'driver_assigned', driver);
+      const trip = buildTripFromDraft(draft, 'searching_driver');
       if (trip) {
         setActiveTrip(trip);
-        mirrorCreateAndAssign(trip, preferFemale, handleRealDriverAssigned);
+        mirrorCreateAndAssign(trip, preferFemale, handleRealDriverAssigned, onAssignFailed);
         recordTripEvent(trip.id, 'trip_created', { distanceKm: trip.distanceKm, priceKz: trip.priceKz }).catch(() => {});
         recordTripEvent(trip.id, 'driver_assigned', { driverId: trip.driver?.id ?? '', womenMode: preferFemale ? 1 : 0 }).catch(() => {});
       }
@@ -238,6 +247,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       if (trip) {
         created = trip;
         setScheduledTrips((prev) => [trip, ...prev]);
+        mirrorCreateScheduled(trip);
         recordTripEvent(trip.id, 'trip_created', { distanceKm: trip.distanceKm, priceKz: trip.priceKz }).catch(() => {});
       }
       return draft;
@@ -246,6 +256,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   };
 
   const cancelScheduledTrip: TripContextValue['cancelScheduledTrip'] = (tripId) => {
+    mirrorCancel(tripId, 'Reserva cancelada pelo passageiro');
     setScheduledTrips((prev) => prev.filter((t) => t.id !== tripId));
   };
 
@@ -315,6 +326,11 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
           recordTripEvent(trip.id, 'completed', { priceKz: trip.priceKz }).catch(() => {});
           return { ...trip, status: 'completed' };
         }
+        if (status === 'cancelled' && trip.status !== 'completed') {
+          recordTripEvent(trip.id, 'cancelled', { source: 'driver' }).catch(() => {});
+          Alert.alert('Viagem cancelada', 'O motorista cancelou a viagem.');
+          return null;
+        }
         return trip;
       });
     };
@@ -325,6 +341,39 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
 
     return connectTripSocket(remoteTripId, applyServerStatus, syncNow, setDriverLocation);
   }, [remoteTripId]);
+
+  // Reservas: quando o servidor atribui motorista, a reserva passa a viagem activa.
+  useEffect(() => {
+    if (activeTrip || scheduledTrips.length === 0) return;
+    let alive = true;
+    const check = async () => {
+      for (const st of scheduledTrips) {
+        const remoteId = mirrorRemoteId(st.id);
+        if (!remoteId) continue;
+        try {
+          const t = await tripsApi.get(remoteId);
+          if (!alive) return;
+          if (t.status === 'cancelled') {
+            setScheduledTrips((prev) => prev.filter((x) => x.id !== st.id));
+            continue;
+          }
+          if ((t.status === 'driver_assigned' || t.status === 'driver_arriving') && t.driver) {
+            setScheduledTrips((prev) => prev.filter((x) => x.id !== st.id));
+            setActiveTrip({ ...st, status: 'driver_assigned', remoteId, boardingCode: t.boardingCode });
+            handleRealDriverAssigned(st.id, { driver: t.driver, driverLocation: t.driverLocation ?? null, boardingCode: t.boardingCode, remoteId, vehicle: t.vehicle ?? null });
+            Alert.alert('Reserva com motorista', t.driver.fullName + ' vai buscar-te. O codigo de embarque esta na viagem.');
+            return;
+          }
+        } catch {
+          // sem rede: tenta no ciclo seguinte
+        }
+      }
+    };
+    check();
+    const timer = setInterval(check, 10000);
+    return () => { alive = false; clearInterval(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduledTrips, activeTrip]);
 
   const value = useMemo(
     () => ({
@@ -346,6 +395,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       setPaymentMethod,
       resetTripDraft,
       assignDriver,
+      assignError,
       scheduleTrip,
       cancelScheduledTrip,
       beginRide,
@@ -353,7 +403,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       cancelTrip,
       clearActiveTrip,
     }),
-    [tripDraft, activeTrip, driverLocation, scheduledTrips, womenModeEnabled]
+    [tripDraft, activeTrip, driverLocation, scheduledTrips, womenModeEnabled, assignError]
   );
 
   return <TripContext.Provider value={value}>{children}</TripContext.Provider>;

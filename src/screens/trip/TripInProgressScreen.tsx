@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useState } from 'react';
-import { Alert, Image, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View, Share } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import ScreenContainer from '../../components/common/ScreenContainer';
@@ -13,7 +13,10 @@ import CancelTripModal from '../../components/trip/CancelTripModal';
 import PriceChangeAlertModal from '../../components/trip/PriceChangeAlertModal';
 import VehicleScoreBadge from '../../components/trip/VehicleScoreBadge';
 import TripDetailsModal from '../../components/trip/TripDetailsModal';
+import { chatApi } from '../../services/api';
 import { recordTripEvent } from '../../services/tripEventStore';
+import TripChat from '../../components/chat/TripChat';
+
 import { proposePriceChange, reportPriceChange } from '../../services/priceChangeSync';
 import { useAuth } from '../../contexts/AuthContext';
 import { ComfortPreferenceId, PaymentMethodType } from '../../types';
@@ -64,6 +67,8 @@ export default function TripInProgressScreen({ navigation }: Props) {
   const [detailsVisible, setDetailsVisible] = useState(false);
   const [proposedPrice, setProposedPrice] = useState(0);
   const [sentMessage, setSentMessage] = useState<string | null>(null);
+  const [chatVisible, setChatVisible] = useState(false);
+
   // Selo de Trajeto Limpo: distancia real da rota (OSRM) capturada assim que
   // o troco origem->destino fica pronto, para comparar com a estimativa.
   const [actualDistanceKm, setActualDistanceKm] = useState<number | null>(null);
@@ -114,13 +119,14 @@ export default function TripInProgressScreen({ navigation }: Props) {
     }
   };
 
-  const handleShare = () => {
-    Alert.alert(
-      'Viagem partilhada',
-      autoShareTripEnabled
-        ? `${emergencyContact?.name ?? 'O teu contacto de emergencia'} ja recebe automaticamente o percurso (partilha automatica ativa).`
-        : 'Link da viagem copiado (simulacao). Ativa a partilha automatica em Perfil > Seguranca AngoTour.'
-    );
+  const handleShare = async () => {
+    const plate = driver.vehiclePlate ? ' (' + driver.vehiclePlate + ')' : '';
+    const message = 'Estou numa viagem AngoTour com ' + driver.fullName + plate + '. Destino: ' + activeTrip.destination.label + '.';
+    try {
+      await Share.share({ message });
+    } catch {
+      Alert.alert('Partilha', 'Nao foi possivel abrir a partilha.');
+    }
   };
 
   const handleSimulatePriceChange = () => {
@@ -139,7 +145,7 @@ export default function TripInProgressScreen({ navigation }: Props) {
     setPriceChangeVisible(false);
     recordTripEvent(activeTrip.id, 'price_change_reported', { proposedPriceKz: proposedPrice }).catch(() => {});
     reportPriceChange(activeTrip.id);
-    Alert.alert('Problema reportado', 'Registamos a tentativa de alteracao de preco (simulacao). A nossa equipa de confianca vai analisar este motorista.');
+    Alert.alert('Problema reportado', 'Registamos a tentativa de alteracao de preco. A nossa equipa de confianca vai analisar este motorista.');
   };
 
   const handleCancelProtected = async () => {
@@ -153,10 +159,18 @@ export default function TripInProgressScreen({ navigation }: Props) {
     recordTripEvent(activeTrip.id, 'sos_triggered', { driverId: driver.id, vehiclePlate: driver.vehiclePlate }).catch(() => {});
   };
 
-  const handleQuickMessage = (message: string) => {
-    setSentMessage(message);
+  const handleQuickMessage = async (message: string) => {
     recordTripEvent(activeTrip.id, 'quick_message_sent', { message }).catch(() => {});
-    Alert.alert('Mensagem enviada', message + ' foi enviado a ' + driver.fullName + ' (simulacao).');
+    if (!activeTrip.remoteId) {
+      Alert.alert('Mensagem nao enviada', 'A viagem ainda esta a ser ligada ao servidor. Tenta outra vez dentro de instantes.');
+      return;
+    }
+    try {
+      await chatApi.send(activeTrip.remoteId, message);
+      setSentMessage(message);
+    } catch (e) {
+      Alert.alert('Nao foi possivel enviar', (e as Error).message);
+    }
   };
 
   return (
@@ -270,9 +284,6 @@ export default function TripInProgressScreen({ navigation }: Props) {
             <Text style={styles.protectedBadgeText}>Protegido</Text>
           </View>
         </View>
-        <TouchableOpacity onPress={handleSimulatePriceChange}>
-          <Text style={styles.demoLink}>Simular alteracao de preco (teste)</Text>
-        </TouchableOpacity>
 
         <View style={styles.paymentCard}>
           <View style={styles.paymentIconBadge}>
@@ -320,20 +331,18 @@ export default function TripInProgressScreen({ navigation }: Props) {
         </TouchableOpacity>
 
         {activeTrip.remoteId ? (
+          <TouchableOpacity style={[styles.secondaryAction, { marginRight: 0, marginTop: spacing.sm }]} onPress={() => setChatVisible(true)}>
+            <Ionicons name="chatbubbles-outline" size={18} color={colors.textPrimary} />
+            <Text style={styles.secondaryActionText}>Mensagens</Text>
+          </TouchableOpacity>
+        ) : null}
+        {activeTrip.remoteId ? (
           <View style={styles.waitingCard}>
             <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
             <Text style={styles.waitingText}>
               {isArriving ? 'O motorista confirma o embarque com o teu codigo.' : 'A viagem termina quando o motorista a concluir.'}
             </Text>
           </View>
-        ) : null}
-        {!activeTrip.remoteId || __DEV__ ? (
-          <Button
-            label={(isArriving ? 'Confirmar embarque' : 'Concluir viagem') + (activeTrip.remoteId ? ' (teste)' : '')}
-            variant={activeTrip.remoteId ? 'outline' : undefined}
-            onPress={handlePrimaryAction}
-            style={{ marginTop: spacing.sm }}
-          />
         ) : null}
         <Button label="Cancelar viagem" variant="outline" onPress={() => setCancelModalVisible(true)} style={{ marginTop: spacing.sm }} />
       </ScrollView>
@@ -364,6 +373,10 @@ export default function TripInProgressScreen({ navigation }: Props) {
         onReport={handleReportPriceChange}
         onCancelProtected={handleCancelProtected}
       />
+
+      {activeTrip.remoteId ? (
+        <TripChat visible={chatVisible} onClose={() => setChatVisible(false)} tripId={activeTrip.remoteId} driverName={driver.fullName} />
+      ) : null}
 
       <TripDetailsModal visible={detailsVisible} onClose={() => setDetailsVisible(false)} tripId={activeTrip.id} />
     </ScreenContainer>

@@ -17,6 +17,7 @@ interface AuthContextValue {
   submitIdentityVerification: () => Promise<void>;
   addAngoPoints: (points: number) => void;
   spendAngoPoints: (points: number) => Promise<boolean>;
+  updateProfile: (data: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -146,10 +147,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return true;
   };
 
+  const updateProfile = (data: Partial<User>) => {
+    const current = userRef.current;
+    if (!current) return;
+    persistUser({ ...current, ...data });
+  };
+
   const value = useMemo(
     () => ({
       user, isLoading, pendingPhone, requestOtp, verifyOtp, completeRegistration, signOut,
-      submitIdentityVerification, addAngoPoints, spendAngoPoints,
+      submitIdentityVerification, addAngoPoints, spendAngoPoints, updateProfile,
     }),
     [user, isLoading, pendingPhone]
   );

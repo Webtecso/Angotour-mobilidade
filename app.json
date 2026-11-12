@@ -21,7 +21,17 @@
     },
     "plugins": [
       "expo-font",
-      "expo-video"
+      "expo-video",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "A AngoTour precisa da tua localizacao para encontrar motoristas proximos e calcular a tua viagem.",
+          "locationWhenInUsePermission": "A AngoTour precisa da tua localizacao para encontrar motoristas proximos e calcular a tua viagem."
+        }
+      ],
+      "expo-notifications",
+      "expo-splash-screen",
+      "expo-status-bar"
     ]
   }
 }

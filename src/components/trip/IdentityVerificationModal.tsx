@@ -1,7 +1,9 @@
 ﻿import React, { useState } from 'react';
-import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../../contexts/AuthContext';
+import { identityDocumentsApi } from '../../services/api';
 import { colors, radius, spacing, typography } from '../../constants/theme';
 
 interface IdentityVerificationModalProps {
@@ -9,25 +11,83 @@ interface IdentityVerificationModalProps {
   onClose: () => void;
 }
 
-type Step = 'intro' | 'id_photo' | 'selfie' | 'processing' | 'done';
+type Step = 'intro' | 'bi_front' | 'bi_back' | 'selfie' | 'processing' | 'done';
+
+const STEP_INFO: Record<Exclude<Step, 'intro' | 'processing' | 'done'>, { icon: React.ComponentProps<typeof Ionicons>['name']; title: string; text: string; camera: ImagePicker.CameraType }> = {
+  bi_front: {
+    icon: 'card-outline',
+    title: 'Foto do documento (BI) - frente',
+    text: 'Tira uma foto nitida da frente do teu Bilhete de Identidade, com todos os dados legiveis.',
+    camera: ImagePicker.CameraType.back,
+  },
+  bi_back: {
+    icon: 'card-outline',
+    title: 'Foto do documento (BI) - verso',
+    text: 'Agora o verso do teu Bilhete de Identidade.',
+    camera: ImagePicker.CameraType.back,
+  },
+  selfie: {
+    icon: 'happy-outline',
+    title: 'Selfie de verificacao',
+    text: 'Confirma que a pessoa que usa esta conta corresponde ao documento enviado.',
+    camera: ImagePicker.CameraType.front,
+  },
+};
 
 /**
- * Verificacao de Identidade (seccao 2.2 e 8-9 do documento): simula o envio
- * do BI + selfie de verificacao. Ao concluir, ativa o Selo "Utilizador
- * Verificado AngoTour" atraves de submitIdentityVerification (AuthContext).
+ * Verificacao de Identidade (seccao 2.2 e 8-9 do documento): BI (frente/verso) + selfie,
+ * enviados para o servidor. NUNCA se auto-aprova - fica "pending" ate um revisor confirmar
+ * no Admin. Ao concluir, ativa o Selo "Utilizador Verificado AngoTour" (AuthContext).
  */
 export default function IdentityVerificationModal({ visible, onClose }: IdentityVerificationModalProps) {
   const { user, submitIdentityVerification } = useAuth();
   const [step, setStep] = useState<Step>('intro');
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleClose = () => {
     setStep('intro');
+    setError('');
     onClose();
   };
 
-  const handleSubmit = async () => {
+  const captureAndUpload = async (type: Exclude<Step, 'intro' | 'processing' | 'done'>, next: Step) => {
+    setError('');
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      setError('Precisamos de acesso a camara para continuar.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      cameraType: STEP_INFO[type].camera,
+      base64: true,
+      quality: 0.5,
+      allowsEditing: false,
+    });
+    if (result.canceled || !result.assets?.[0]?.base64) return;
+
+    setUploading(true);
+    try {
+      await identityDocumentsApi.submit(type, result.assets[0].base64);
+      if (next === 'processing') {
+        await handleFinalSubmit();
+      } else {
+        setStep(next);
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleFinalSubmit = async () => {
     setStep('processing');
-    await submitIdentityVerification();
+    try {
+      await submitIdentityVerification();
+    } catch {
+      // submitIdentityVerification ja cai para uma simulacao local em caso de erro de rede
+    }
     setStep('done');
   };
 
@@ -46,39 +106,40 @@ export default function IdentityVerificationModal({ visible, onClose }: Identity
             </View>
             <Text style={styles.stepTitle}>Torna-te um Utilizador Verificado</Text>
             <Text style={styles.stepText}>
-              Precisamos de uma foto do teu documento de identificacao e uma selfie rapida.
-              Isto aumenta a confianca dos motoristas e reduz fraudes.
+              Precisamos de uma foto da frente e do verso do teu documento de identificacao, e uma selfie rapida.
+              Isto aumenta a confianca dos motoristas e reduz fraudes. As fotos sao revistas por uma pessoa da
+              equipa AngoTour antes de o selo ficar ativo.
             </Text>
-            <TouchableOpacity style={styles.primaryButton} activeOpacity={0.85} onPress={() => setStep('id_photo')}>
+            <TouchableOpacity style={styles.primaryButton} activeOpacity={0.85} onPress={() => setStep('bi_front')}>
               <Text style={styles.primaryButtonText}>Comecar verificacao</Text>
             </TouchableOpacity>
           </View>
         ) : null}
 
-        {step === 'id_photo' ? (
+        {step === 'bi_front' || step === 'bi_back' || step === 'selfie' ? (
           <View style={styles.stepContent}>
             <View style={styles.iconBadge}>
-              <Ionicons name="card-outline" size={28} color={colors.primary} />
+              <Ionicons name={STEP_INFO[step].icon} size={28} color={colors.primary} />
             </View>
-            <Text style={styles.stepTitle}>Foto do documento (BI)</Text>
-            <Text style={styles.stepText}>Tira uma foto nitida do teu Bilhete de Identidade, com todos os dados legiveis.</Text>
-            <TouchableOpacity style={styles.mockPhotoBox} activeOpacity={0.8} onPress={() => setStep('selfie')}>
-              <Ionicons name="camera-outline" size={22} color={colors.textMuted} />
-              <Text style={styles.mockPhotoText}>Toca para simular a foto</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-
-        {step === 'selfie' ? (
-          <View style={styles.stepContent}>
-            <View style={styles.iconBadge}>
-              <Ionicons name="happy-outline" size={28} color={colors.primary} />
-            </View>
-            <Text style={styles.stepTitle}>Selfie de verificacao</Text>
-            <Text style={styles.stepText}>Confirma que a pessoa que usa esta conta corresponde ao documento enviado.</Text>
-            <TouchableOpacity style={styles.mockPhotoBox} activeOpacity={0.8} onPress={handleSubmit}>
-              <Ionicons name="camera-outline" size={22} color={colors.textMuted} />
-              <Text style={styles.mockPhotoText}>Toca para simular a selfie</Text>
+            <Text style={styles.stepTitle}>{STEP_INFO[step].title}</Text>
+            <Text style={styles.stepText}>{STEP_INFO[step].text}</Text>
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            <TouchableOpacity
+              style={styles.mockPhotoBox}
+              activeOpacity={0.8}
+              disabled={uploading}
+              onPress={() =>
+                captureAndUpload(step, step === 'bi_front' ? 'bi_back' : step === 'bi_back' ? 'selfie' : 'processing')
+              }
+            >
+              {uploading ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : (
+                <>
+                  <Ionicons name="camera-outline" size={22} color={colors.textMuted} />
+                  <Text style={styles.mockPhotoText}>Toca para tirar a foto</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         ) : null}
@@ -92,18 +153,13 @@ export default function IdentityVerificationModal({ visible, onClose }: Identity
 
         {step === 'done' ? (
           <View style={styles.stepContent}>
-            <View style={[styles.iconBadge, { backgroundColor: user?.isVerified ? colors.primaryLight : colors.amberLight }]}>
-              <Ionicons
-                name={user?.isVerified ? 'checkmark-circle' : 'time-outline'}
-                size={32}
-                color={user?.isVerified ? colors.primary : colors.amber}
-              />
+            <View style={[styles.iconBadge, { backgroundColor: colors.amberLight }]}>
+              <Ionicons name="time-outline" size={32} color={colors.amber} />
             </View>
-            <Text style={styles.stepTitle}>{user?.isVerified ? 'Verificado com sucesso!' : 'Documentos em analise'}</Text>
+            <Text style={styles.stepTitle}>Documentos em analise</Text>
             <Text style={styles.stepText}>
-              {user?.isVerified
-                ? 'Ja es um Utilizador Verificado AngoTour. O teu selo vai aparecer no perfil e durante as viagens.'
-                : 'Recebemos os teus documentos. Um revisor vai confirmar a tua identidade em breve - avisamos-te assim que o selo ficar ativo.'}
+              Recebemos os teus documentos. Um revisor vai confirmar a tua identidade em breve - avisamos-te assim
+              que o selo ficar ativo.
             </Text>
             <TouchableOpacity style={styles.primaryButton} activeOpacity={0.85} onPress={handleClose}>
               <Text style={styles.primaryButtonText}>Concluir</Text>
@@ -123,6 +179,7 @@ const styles = StyleSheet.create({
   iconBadge: { width: 60, height: 60, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
   stepTitle: { ...typography.h3, color: colors.textPrimary, textAlign: 'center' },
   stepText: { ...typography.caption, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xs, marginBottom: spacing.lg, paddingHorizontal: spacing.sm },
+  errorText: { ...typography.caption, color: colors.danger, textAlign: 'center', marginBottom: spacing.sm },
   primaryButton: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.xl, alignItems: 'center' },
   primaryButtonText: { ...typography.bodyMedium, color: colors.textInverse },
   mockPhotoBox: {

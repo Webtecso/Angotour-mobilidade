@@ -39,7 +39,7 @@ function RadarRing({ delay }: { delay: number }) {
 }
 
 export default function RequestingDriverScreen({ navigation }: Props) {
-  const { assignDriver, cancelTrip, activeTrip } = useTrip();
+  const { assignDriver, cancelTrip, activeTrip, assignError } = useTrip();
   const { womenModeEnabled } = useSettings();
   const [stepIndex, setStepIndex] = useState(0);
   const [assignTriggered, setAssignTriggered] = useState(false);
@@ -79,6 +79,10 @@ export default function RequestingDriverScreen({ navigation }: Props) {
     }
   }, [assignTriggered, activeTrip, navigation]);
 
+  const retry = () => {
+    assignDriver(womenModeEnabled);
+  };
+
   const handleCancel = () => {
     cancelTrip();
     navigation.popToTop();
@@ -100,7 +104,14 @@ export default function RequestingDriverScreen({ navigation }: Props) {
         </View>
       </View>
 
-      <Text style={styles.title}>Procurando um motorista</Text>
+      <Text style={styles.title}>{assignError ? 'Sem motoristas disponiveis' : 'Procurando um motorista'}</Text>
+      {assignError ? (
+        <>
+          <Text style={styles.subtitle}>{assignError}</Text>
+          <Text style={[styles.title, { fontSize: 16, marginBottom: spacing.sm }]} onPress={retry}>Tentar novamente</Text>
+          <Text style={styles.subtitle} onPress={handleCancel}>Cancelar</Text>
+        </>
+      ) : null}
       <Text style={styles.subtitle}>Estamos a encontrar o melhor motorista para voce...</Text>
 
       <View style={styles.stepList}>

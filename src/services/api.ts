@@ -141,11 +141,14 @@ export const tripsApi = {
   cancel: (id: string, reason?: string) =>
     request<RemoteTrip>(`/trips/${id}/cancel`, { method: 'PATCH', body: { reason }, auth: true }),
   mine: () => request<RemoteTrip[]>('/trips/me', { auth: true }),
+  get: (id: string) => request<RemoteTrip>(`/trips/${id}`, { auth: true }),
 };
 
 // --- Users ---
 export const usersApi = {
   getMe: () => request('/users/me', { auth: true }),
+  update: (dto: { fullName?: string; email?: string; birthDate?: string; preferredLanguage?: 'pt' | 'en' }) =>
+    request<any>('/users/me', { method: 'PATCH', body: dto, auth: true }),
 };
 
 // --- Suporte (Incident Center / Objetos perdidos) ---
@@ -212,3 +215,27 @@ export const monthlyApi = {
   renew: (id: string) => request<MonthlyContractView>(`/monthly/contracts/${id}/renew`, { method: 'POST', auth: true }),
   confirmPayment: (id: string) => request<MonthlyContractView>(`/monthly/contracts/${id}/payment/confirm`, { method: 'POST', auth: true }),
 };
+
+// --- Chat passageiro-motorista (so participantes da viagem) ---
+export interface ChatMessageView { id: string; senderRole: 'passenger' | 'driver'; body: string; createdAt: string; fromMe: boolean }
+export interface ChatThreadView { messages: ChatMessageView[]; canSend: boolean }
+export const chatApi = {
+  list: (tripId: string) => request<ChatThreadView>(`/chat/trips/${tripId}/messages`, { auth: true }),
+  send: (tripId: string, body: string) =>
+    request<ChatMessageView>(`/chat/trips/${tripId}/messages`, { method: 'POST', body: { body }, auth: true }),
+};
+
+// --- Verificacao de identidade do passageiro: BI (frente/verso) e selfie ---
+export type IdentityDocumentServerType = 'bi_front' | 'bi_back' | 'selfie';
+export interface IdentityDocumentView {
+  type: IdentityDocumentServerType;
+  status: 'not_submitted' | 'pending' | 'approved' | 'rejected';
+  rejectionReason: string | null;
+  updatedAt: string | null;
+}
+export const identityDocumentsApi = {
+  list: () => request<IdentityDocumentView[]>('/identity-documents', { auth: true }),
+  submit: (type: IdentityDocumentServerType, imageBase64: string) =>
+    request<{ type: string; status: string }>('/identity-documents/' + type, { method: 'POST', body: { imageBase64 }, auth: true }),
+};
+

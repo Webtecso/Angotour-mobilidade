@@ -1,6 +1,9 @@
 ﻿import React, { useEffect, useRef } from 'react';
 import { StyleSheet, View, ViewStyle } from 'react-native';
-import { WebView, WebViewMessageEvent } from 'react-native-webview';
+import { WebView as RNWebView, WebViewMessageEvent } from 'react-native-webview';
+// SDK 58: os tipos do react-native-webview 14 nao encaixam no React 19.3 (props: never).
+// Tipo solto so aqui; o resto do ficheiro continua verificado.
+const WebView = RNWebView as unknown as import('react').ComponentType<any>;
 import { Coordinates } from '../../types';
 import { colors, radius } from '../../constants/theme';
 import { RIDE_MAP_HTML } from './rideMapHtml';
@@ -53,7 +56,7 @@ export default function RideMapView({
   origin, destination, carMarkers, routeColor, initialCenter, height = 220, style, zoom = 14,
   onCenterChange, onRouteInfo, live, hideSimulatedCar, onProgress, onComplete, showEta = true, etaLabel,
 }: RideMapViewProps) {
-  const webRef = useRef<WebView>(null);
+  const webRef = useRef<RNWebView>(null);
   const readyRef = useRef(false);
   const lastSent = useRef<string | null>(null);
   const cb = useRef({ onCenterChange, onRouteInfo, onProgress, onComplete });

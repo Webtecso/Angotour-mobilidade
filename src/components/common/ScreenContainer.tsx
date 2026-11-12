@@ -29,7 +29,7 @@ export default function ScreenContainer({
 
   const content = (
     <SafeAreaView style={[styles.safeArea, !isDark && { backgroundColor: resolvedBg }]} edges={edges}>
-      <StatusBar barStyle={resolvedStatusBar} backgroundColor={resolvedBg} />
+      <StatusBar barStyle={resolvedStatusBar} />
       <View style={[styles.content, style]}>{children}</View>
     </SafeAreaView>
   );

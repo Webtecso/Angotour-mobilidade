@@ -63,7 +63,7 @@ export default function HomeScreen({ navigation }: Props) {
   const [vehicleType, setVehicleType] = useState<VehicleTypeId>('viagem');
 
   const { currentPlace, isLoading: isLocating, permissionDenied, refresh: refreshLocation } = useLocation();
-  const { setOrigin, setDestination, selectCategory } = useTrip();
+  const { setOrigin, setDestination, selectCategory, activeTrip } = useTrip();
 
   const destinationsListRef = useRef<FlatList<PopularDestinationItem>>(null);
   const destinationIndexRef = useRef(0);
@@ -90,6 +90,12 @@ export default function HomeScreen({ navigation }: Props) {
     return stopAutoScroll;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // reserva ativada: quando uma viagem ganha motorista (ou a app reabre com viagem em curso), abre o ecra da viagem
+  useEffect(() => {
+    if (navigation.isFocused() && activeTrip?.driver && activeTrip.status !== 'completed') navigation.navigate('TripInProgress');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTrip?.id, activeTrip?.driver?.id]);
 
   useEffect(() => {
     setOrigin(currentPlace);

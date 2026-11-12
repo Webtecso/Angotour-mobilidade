@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,6 +10,7 @@ import { awardPointsForTrip } from '../../services/pointsStore';
 import { setFavoriteDriver } from '../../services/favoriteDriverStore';
 import { ratingsRemote } from '../../services/extrasApi';
 import { syncQuiet } from '../../services/remoteSync';
+import { tripsApi } from '../../services/api';
 import { PaymentState } from '../../types';
 import { HomeStackParamList } from '../../navigation/types';
 import { colors, radius, spacing, typography } from '../../constants/theme';
@@ -39,12 +40,29 @@ export default function TripCompletedScreen({ navigation }: Props) {
     awardPointsForTrip(activeTrip.id, activeTrip.priceKz).then((points) => {
       if (alive) setPointsEarned(points);
     });
-    const timer = setTimeout(() => {
-      if (alive) setPaymentState('confirmed');
-    }, 1800);
+    // Sem ligacao ao servidor (viagem so local): mantem a simulacao.
+    if (!activeTrip.remoteId) {
+      const timer = setTimeout(() => {
+        if (alive) setPaymentState('confirmed');
+      }, 1800);
+      return () => {
+        alive = false;
+        clearTimeout(timer);
+      };
+    }
+    // Com servidor: pagamento por carteira e debitado automaticamente (o saldo
+    // ja desconta a viagem concluida). Se nao houver saldo, o servidor devolve
+    // paymentConfirmed=false e mostramos a falha em vez de inventar sucesso.
+    tripsApi
+      .get(activeTrip.remoteId)
+      .then((t: any) => {
+        if (alive) setPaymentState(t.paymentConfirmed === false ? 'failed' : 'confirmed');
+      })
+      .catch(() => {
+        if (alive) setPaymentState('failed');
+      });
     return () => {
       alive = false;
-      clearTimeout(timer);
     };
   }, [activeTrip]);
 
@@ -204,6 +222,3 @@ const styles = StyleSheet.create({
     padding: spacing.sm, minHeight: 70, textAlignVertical: 'top', ...typography.body, color: colors.textPrimary,
   },
 });
-
-
-

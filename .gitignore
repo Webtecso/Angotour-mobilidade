@@ -11,3 +11,9 @@ storage/
 patch*.js
 patch*.cjs
 tmp-*.txt
+*.bak
+*.bak[0-9]*
+tmp-*.sql
+audit-next.txt
+*.tsbuildinfo
+.expo/

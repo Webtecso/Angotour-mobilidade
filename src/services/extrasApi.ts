@@ -75,7 +75,9 @@ export const familyRemote = {
 export interface RemoteRewardCatalogItem {
   id: string;
   title: string;
+  description: string;
   costPoints: number;
+  category: 'hotel' | 'restaurante' | 'experiencia' | 'desconto';
 }
 
 export interface RemoteRewardRedemption {

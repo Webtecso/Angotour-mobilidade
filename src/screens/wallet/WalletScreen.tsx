@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import type { ComponentRef } from 'react';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import ScreenContainer from '../../components/common/ScreenContainer';
 import RouteDivider from '../../components/common/RouteDivider';
@@ -7,7 +8,7 @@ import AnchorTabs from '../../components/common/AnchorTabs';
 import TopUpModal from '../../components/trip/TopUpModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { useWallet } from '../../hooks/useBackendData';
-import { paymentMethods, walletTransactions } from '../../services/mockData';
+import { paymentMethods } from '../../services/mockData';
 import { getConfirmedBalanceAdjustment, getTopUps, INITIAL_BALANCE_KZ, WalletTopUp } from '../../services/walletStore';
 import { PaymentMethod } from '../../types';
 import { colors, radius, spacing, typography } from '../../constants/theme';
@@ -18,13 +19,6 @@ const PAYMENT_ICONS: Record<PaymentMethod['type'], React.ComponentProps<typeof M
   unitel_money: 'cellphone',
   card: 'credit-card-outline',
   cash: 'cash',
-};
-
-const TRANSACTION_ICONS: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
-  trip: 'car-outline',
-  topup: 'add-circle-outline',
-  refund: 'arrow-undo-outline',
-  points: 'gift-outline',
 };
 
 const ANCHORS = [
@@ -52,7 +46,7 @@ export default function WalletScreen() {
   const [localBalanceKz, setLocalBalanceKz] = useState(INITIAL_BALANCE_KZ);
   const [localTopUps, setLocalTopUps] = useState<WalletTopUp[]>([]);
   const [topUpModalVisible, setTopUpModalVisible] = useState(false);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ComponentRef<typeof ScrollView> | null>(null);
   const offsets = useRef<Record<string, number>>({});
 
   // O servidor e a fonte de verdade. Os dados locais so aparecem se o servidor nao responder.
@@ -81,7 +75,6 @@ export default function WalletScreen() {
   };
 
   const pendingTopUps = topUps.filter((t) => t.status === 'processing');
-  const demoTransactions = isServer ? [] : walletTransactions;
 
   return (
     <ScreenContainer style={styles.container}>
@@ -145,7 +138,7 @@ export default function WalletScreen() {
 
         <View onLayout={(e) => { offsets.current['transacoes'] = e.nativeEvent.layout.y; }} style={styles.section}>
           <Text style={styles.sectionHeader}>Ultimas transacoes</Text>
-          {demoTransactions.length === 0 && topUps.length === 0 ? (
+          {topUps.length === 0 ? (
             <View style={styles.emptyTransactions}>
               <Ionicons name="receipt-outline" size={22} color={colors.textMuted} />
               <Text style={styles.emptyTransactionsText}>As tuas transacoes vao aparecer aqui assim que fizeres o primeiro carregamento.</Text>
@@ -163,20 +156,6 @@ export default function WalletScreen() {
                   </View>
                   <Text style={[styles.txAmount, topUp.status === 'confirmed' && styles.txAmountPositive]}>
                     +{topUp.amountKz.toLocaleString('pt-AO')} Kz
-                  </Text>
-                </View>
-              ))}
-              {demoTransactions.map((tx) => (
-                <View key={tx.id} style={styles.methodRow}>
-                  <View style={styles.methodIconBadge}>
-                    <Ionicons name={TRANSACTION_ICONS[tx.type]} size={18} color={colors.ink} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.methodLabel}>{tx.label}</Text>
-                    <Text style={styles.txDate}>{formatDate(tx.dateIso)}</Text>
-                  </View>
-                  <Text style={[styles.txAmount, tx.amountKz > 0 && styles.txAmountPositive]}>
-                    {tx.amountKz > 0 ? '+' : ''}{tx.amountKz.toLocaleString('pt-AO')} Kz
                   </Text>
                 </View>
               ))}

@@ -1,12 +1,13 @@
 ﻿import React, { useRef, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import type { ComponentRef } from 'react';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import ScreenContainer from '../../components/common/ScreenContainer';
 import ComingSoonNotice from '../../components/common/ComingSoonNotice';
 import AnchorTabs from '../../components/common/AnchorTabs';
 import ReceiptModal from '../../components/trip/ReceiptModal';
 import { useTrip } from '../../contexts/TripContext';
-import { tripHistory, vehicleCategories, TripHistoryEntry } from '../../services/mockData';
+import { vehicleCategories, TripHistoryEntry } from '../../services/mockData';
 import { useTripHistory } from '../../hooks/useBackendData';
 import { colors, radius, spacing, typography } from '../../constants/theme';
 
@@ -32,13 +33,13 @@ function formatDate(dateIso: string) {
 
 export default function TripHistoryScreen() {
   const { scheduledTrips, cancelScheduledTrip } = useTrip();
-  const { data: history } = useTripHistory(tripHistory);
+  const { data: history, loading, isRemote } = useTripHistory([]);
   const hasScheduled = scheduledTrips.length > 0;
 
   const anchors = hasScheduled ? [{ id: 'agendadas', label: 'Agendadas' }, ...HISTORY_ANCHORS] : HISTORY_ANCHORS;
   const [activeAnchor, setActiveAnchor] = useState(anchors[0].id);
   const [receiptTrip, setReceiptTrip] = useState<TripHistoryEntry | null>(null);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ComponentRef<typeof ScrollView> | null>(null);
   const offsets = useRef<Record<string, number>>({});
 
   const handleAnchorPress = (id: string) => {
@@ -60,6 +61,14 @@ export default function TripHistoryScreen() {
   }));
 
   if (history.length === 0 && !hasScheduled) {
+    if (loading && !isRemote) {
+      return (
+        <ScreenContainer style={styles.container}>
+          <Text style={styles.header}>Atividade</Text>
+          <Text style={styles.tripMeta}>A carregar...</Text>
+        </ScreenContainer>
+      );
+    }
     return (
       <ScreenContainer style={styles.container}>
         <Text style={styles.header}>Atividade</Text>

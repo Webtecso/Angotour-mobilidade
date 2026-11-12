@@ -2,7 +2,7 @@
 import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { recordIncident } from '../../services/incidentStore';
-import { tripHistory } from '../../services/mockData';
+import { useTripHistory } from '../../hooks/useBackendData';
 import { colors, radius, spacing, typography } from '../../constants/theme';
 
 interface IncidentCenterModalProps {
@@ -21,6 +21,7 @@ const CATEGORIES: { id: string; label: string; icon: React.ComponentProps<typeof
 const STATUS_STEPS = ['Recebido', 'Analise automatica', 'Em investigacao', 'Decisao', 'Resolvido'];
 
 export default function IncidentCenterModal({ visible, onClose }: IncidentCenterModalProps) {
+  const { data: tripHistory } = useTripHistory([]);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [tripId, setTripId] = useState<string | null>(null);
   const [description, setDescription] = useState('');

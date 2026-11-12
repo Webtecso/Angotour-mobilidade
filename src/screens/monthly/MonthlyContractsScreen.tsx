@@ -130,11 +130,6 @@ export default function MonthlyContractsScreen() {
                 <>
                   <View style={s.refBox}><Text style={s.muted}>Referencia de pagamento</Text><Text style={s.ref}>{c.paymentReference ?? '-'}</Text></View>
                   <Text style={s.muted}>O contrato so comeca depois de o pagamento ser confirmado.</Text>
-                  {__DEV__ ? (
-                    <TouchableOpacity style={s.ghost} disabled={busy} onPress={() => run(c.id, () => monthlyApi.confirmPayment(c.id))}>
-                      <Text style={s.ghostText}>Simular pagamento (so em desenvolvimento)</Text>
-                    </TouchableOpacity>
-                  ) : null}
                 </>
               ) : null}
 

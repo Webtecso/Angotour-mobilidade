@@ -1,0 +1,875 @@
+﻿=== TripCompletedScreen ===
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
+import ScreenContainer from '../../components/common/ScreenContainer';
+import Button from '../../components/common/Button';
+import RewardsModal from '../../components/trip/RewardsModal';
+import { useTrip } from '../../contexts/TripContext';
+import { awardPointsForTrip } from '../../services/pointsStore';
+import { setFavoriteDriver } from '../../services/favoriteDriverStore';
+import { ratingsRemote } from '../../services/extrasApi';
+import { syncQuiet } from '../../services/remoteSync';
+import { tripsApi } from '../../services/api';
+import { PaymentState } from '../../types';
+import { HomeStackParamList } from '../../navigation/types';
+import { colors, radius, spacing, typography } from '../../constants/theme';
+
+type Props = NativeStackScreenProps<HomeStackParamList, 'TripCompleted'>;
+
+const PAYMENT_LABELS: Record<PaymentState, string> = {
+  processing: 'A processar pagamento...',
+  confirmed: 'Pagamento confirmado',
+  failed: 'Falha no pagamento - tenta outro metodo',
+};
+
+export default function TripCompletedScreen({ navigation }: Props) {
+  const { activeTrip, clearActiveTrip } = useTrip();
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState('');
+  const [pointsEarned, setPointsEarned] = useState<number | null>(null);
+  const [rewardsVisible, setRewardsVisible] = useState(false);
+  const [favoriteSaved, setFavoriteSaved] = useState(false);
+  // Estado real do pagamento (seccao 29 do documento): nunca assumimos
+  // confirmacao instantanea - simulamos "a processar" antes de confirmar.
+  const [paymentState, setPaymentState] = useState<PaymentState>('processing');
+
+  useEffect(() => {
+    if (!activeTrip) return;
+    let alive = true;
+    awardPointsForTrip(activeTrip.id, activeTrip.priceKz).then((points) => {
+      if (alive) setPointsEarned(points);
+    });
+    // Sem ligacao ao servidor (viagem so local): mantem a simulacao.
+    if (!activeTrip.remoteId) {
+      const timer = setTimeout(() => {
+        if (alive) setPaymentState('confirmed');
+      }, 1800);
+      return () => {
+        alive = false;
+        clearTimeout(timer);
+      };
+    }
+    // Com servidor: pagamento por carteira e debitado automaticamente (o saldo
+    // ja desconta a viagem concluida). Se nao houver saldo, o servidor devolve
+    // paymentConfirmed=false e mostramos a falha em vez de inventar sucesso.
+    tripsApi
+      .get(activeTrip.remoteId)
+      .then((t: any) => {
+        if (alive) setPaymentState(t.paymentConfirmed === false ? 'failed' : 'confirmed');
+      })
+      .catch(() => {
+        if (alive) setPaymentState('failed');
+      });
+    return () => {
+      alive = false;
+    };
+  }, [activeTrip]);
+
+  useEffect(() => {
+    if (!activeTrip || !activeTrip.driver) {
+      navigation.popToTop();
+    }
+  }, [activeTrip, navigation]);
+
+  if (!activeTrip || !activeTrip.driver) {
+    return null;
+  }
+
+  // Selo de Trajeto Limpo: compara a distancia estimada com a distancia real
+  // percorrida (rota OSRM). Diferencas grandes podem indicar desvio de rota.
+  const hasCleanRoute =
+    activeTrip.actualDistanceKm !== undefined &&
+    Math.abs(activeTrip.actualDistanceKm - activeTrip.distanceKm) <= activeTrip.distanceKm * 0.15;
+
+  const handleFinish = () => {
+    if (activeTrip.driver) {
+      syncQuiet(() => ratingsRemote.rate({
+        tripRef: activeTrip.id,
+        driverId: activeTrip.driver!.id,
+        stars: rating,
+        comment: comment.trim() || undefined,
+      }));
+    }
+    clearActiveTrip();
+    navigation.popToTop();
+  };
+
+  const handleMarkFavorite = async () => {
+    if (!activeTrip.driver) return;
+    await setFavoriteDriver(activeTrip.driver.id, activeTrip.driver.fullName);
+    setFavoriteSaved(true);
+  };
+
+  return (
+    <ScreenContainer style={styles.container}>
+      <View style={styles.checkBadge}>
+        <Ionicons name="checkmark" size={36} color={colors.textInverse} />
+      </View>
+      <Text style={styles.title}>Viagem concluida!</Text>
+      <Text style={styles.subtitle}>Obrigado por viajar com o AngoTour.</Text>
+
+      <View style={styles.priceCard}>
+        <Text style={styles.priceLabel}>Total da viagem</Text>
+        <Text style={styles.priceValue}>{activeTrip.priceKz.toLocaleString('pt-AO')} Kz</Text>
+        <View style={styles.protectedRow}>
+          <Ionicons name="shield-checkmark" size={14} color={colors.primary} />
+          <Text style={styles.protectedText}>Preco protegido - sem alteracoes desde a confirmacao</Text>
+        </View>
+
+        <View style={styles.paymentRow}>
+          {paymentState === 'processing' ? (
+            <ActivityIndicator size="small" color={colors.textSecondary} />
+          ) : (
+            <Ionicons
+              name={paymentState === 'confirmed' ? 'checkmark-circle' : 'alert-circle'}
+              size={14}
+              color={paymentState === 'confirmed' ? colors.primary : colors.danger}
+            />
+          )}
+          <Text style={[styles.paymentText, paymentState === 'failed' && { color: colors.danger }]}>
+            {PAYMENT_LABELS[paymentState]}
+          </Text>
+        </View>
+
+        {hasCleanRoute ? (
+          <View style={styles.cleanRouteRow}>
+            <Ionicons name="ribbon-outline" size={14} color={colors.teal} />
+            <Text style={styles.cleanRouteText}>Trajeto Limpo - percurso seguiu a rota esperada</Text>
+          </View>
+        ) : null}
+      </View>
+
+      {pointsEarned !== null && pointsEarned > 0 ? (
+        <TouchableOpacity style={styles.pointsCard} activeOpacity={0.85} onPress={() => setRewardsVisible(true)}>
+          <Ionicons name="star" size={20} color={colors.primaryDark} />
+          <View style={{ flex: 1, marginLeft: spacing.sm }}>
+            <Text style={styles.pointsTitle}>+{pointsEarned} AngoPoints ganhos</Text>
+            <Text style={styles.pointsSubtitle}>Toca para ver o catalogo de recompensas</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.primaryDark} />
+        </TouchableOpacity>
+      ) : null}
+
+      <Text style={styles.sectionTitle}>Avalie a sua viagem</Text>
+      <View style={styles.starsRow}>
+        {[1, 2, 3, 4, 5].map((star) => (
+          <TouchableOpacity key={star} onPress={() => setRating(star)}>
+            <Ionicons
+              name={star <= rating ? 'star' : 'star-outline'}
+              size={32}
+              color={colors.amber}
+              style={{ marginHorizontal: 4 }}
+            />
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {rating === 5 && !favoriteSaved ? (
+        <TouchableOpacity style={styles.favoriteButton} activeOpacity={0.85} onPress={handleMarkFavorite}>
+          <Ionicons name="heart-outline" size={16} color={colors.primary} />
+          <Text style={styles.favoriteButtonText}>Marcar {activeTrip.driver.fullName.split(' ')[0]} como motorista preferido</Text>
+        </TouchableOpacity>
+      ) : null}
+      {favoriteSaved ? (
+        <View style={styles.favoriteConfirmed}>
+          <Ionicons name="heart" size={14} color={colors.primary} />
+          <Text style={styles.favoriteConfirmedText}>Motorista preferido guardado - vamos tenta-lo atribuir em proximas viagens.</Text>
+        </View>
+      ) : null}
+
+      <TextInput
+        style={styles.input}
+        placeholder="Deixe um comentario (opcional)"
+        placeholderTextColor={colors.textMuted}
+        value={comment}
+        onChangeText={setComment}
+        multiline
+      />
+
+      <Button label="Concluir" onPress={handleFinish} style={{ marginTop: spacing.lg }} />
+
+      <RewardsModal visible={rewardsVisible} onClose={() => setRewardsVisible(false)} />
+    </ScreenContainer>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { paddingHorizontal: spacing.lg, paddingTop: spacing.xxl, alignItems: 'center' },
+  checkBadge: { width: 72, height: 72, borderRadius: radius.pill, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
+  title: { ...typography.h2, color: colors.textPrimary },
+  subtitle: { ...typography.body, color: colors.textSecondary, marginTop: spacing.xs, marginBottom: spacing.lg },
+  priceCard: { width: '100%', backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, marginBottom: spacing.sm },
+  priceLabel: { ...typography.caption, color: colors.textSecondary },
+  priceValue: { ...typography.h2, color: colors.textPrimary, marginTop: 2 },
+  protectedRow: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs },
+  protectedText: { ...typography.tiny, color: colors.textSecondary, marginLeft: 4 },
+  paymentRow: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.xxs },
+  paymentText: { ...typography.tiny, color: colors.textSecondary, marginLeft: 4 },
+  cleanRouteRow: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.xxs },
+  cleanRouteText: { ...typography.tiny, color: colors.teal, marginLeft: 4 },
+  pointsCard: { flexDirection: 'row', alignItems: 'center', width: '100%', backgroundColor: colors.primaryLight, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.lg },
+  pointsTitle: { ...typography.bodyMedium, color: colors.primaryDark },
+  pointsSubtitle: { ...typography.caption, color: colors.primaryDark, marginTop: 1 },
+  sectionTitle: { ...typography.bodyMedium, color: colors.textPrimary, marginBottom: spacing.sm },
+  starsRow: { flexDirection: 'row', marginBottom: spacing.lg },
+  favoriteButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%', backgroundColor: colors.primaryLight, borderRadius: radius.md, paddingVertical: spacing.sm, marginBottom: spacing.md },
+  favoriteButtonText: { ...typography.captionMedium, color: colors.primaryDark, marginLeft: spacing.xxs, textAlign: 'center' },
+  favoriteConfirmed: { flexDirection: 'row', alignItems: 'center', width: '100%', marginBottom: spacing.md, paddingHorizontal: spacing.xs },
+  favoriteConfirmedText: { ...typography.tiny, color: colors.textSecondary, marginLeft: spacing.xxs, flex: 1 },
+  input: {
+    width: '100%', backgroundColor: colors.surfaceAlt, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
+    padding: spacing.sm, minHeight: 70, textAlignVertical: 'top', ...typography.body, color: colors.textPrimary,
+  },
+});
+
+=== types: pagamento ===
+
+  src\types\index.ts:157:  // Estado real do pagamento (seccao 29): simulado no TripCompletedScreen.
+> src\types\index.ts:158:  paymentState?: PaymentState;
+  src\types\index.ts:159:  // Metodo de pagamento e Troco Inteligente (seccao 27-29 do documento):
+  src\types\index.ts:160:  // guardados no momento da confirmacao da viagem.
+> src\types\index.ts:161:  paymentMethodType: PaymentMethodType;
+  src\types\index.ts:162:  remoteId?: string;
+  src\types\index.ts:163:  cashNoteKz?: number;
+  src\types\index.ts:168:// pagamento instantaneo - o passageiro ve o estado real da transacao.
+> src\types\index.ts:169:export type PaymentState = 'processing' | 'confirmed' | 'failed';
+  src\types\index.ts:170:
+> src\types\index.ts:171:export type PaymentMethodType = 'wallet' | 'multicaixa_express' | 'unitel_money' | 'card' | 
+'cash';
+  src\types\index.ts:172:
+  src\types\index.ts:173:export interface PaymentMethod {
+  src\types\index.ts:174:  id: string;
+> src\types\index.ts:175:  type: PaymentMethodType;
+  src\types\index.ts:176:  label: string;
+  src\types\index.ts:177:  isDefault: boolean;
+
+=== walletStore e backendApi (carteira) ===
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const STORAGE_KEY = '@angotour/wallet_topups';
+
+export const INITIAL_BALANCE_KZ = 0;
+
+export interface WalletTopUp {
+  id: string;
+  dateIso: string;
+  amountKz: number;
+  reference: string;
+  status: 'processing' | 'confirmed' | 'failed';
+}
+
+function generateReference(): string {
+  return Math.floor(900000000 + Math.random() * 99999999).toString();
+}
+
+async function readTopUps(): Promise<WalletTopUp[]> {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeTopUps(topUps: WalletTopUp[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(topUps));
+  } catch {
+    // falha ao gravar nao deve bloquear o fluxo
+  }
+}
+
+export async function getTopUps(): Promise<WalletTopUp[]> {
+  const all = await readTopUps();
+  return all.sort((a, b) => b.dateIso.localeCompare(a.dateIso));
+}
+
+/**
+ * Carregar Carteira (seccao 14 do documento): gera uma referencia simulada
+ * de Multicaixa Express. O estado comeca "processing" e e confirmado pouco
+ * depois - nunca assumimos confirmacao instantanea (seccao 29).
+ */
+export async function startTopUp(amountKz: number): Promise<WalletTopUp> {
+  const topUp: WalletTopUp = {
+    id: `topup-${Date.now()}`,
+    dateIso: new Date().toISOString(),
+    amountKz,
+    reference: generateReference(),
+    status: 'processing',
+  };
+  const all = await readTopUps();
+  await writeTopUps([topUp, ...all]);
+  return topUp;
+}
+
+export async function confirmTopUp(id: string): Promise<void> {
+  const all = await readTopUps();
+  const updated = all.map((t) => (t.id === id ? { ...t, status: 'confirmed' as const } : t));
+  await writeTopUps(updated);
+}
+
+export async function getConfirmedBalanceAdjustment(): Promise<number> {
+  const all = await readTopUps();
+  return all.filter((t) => t.status === 'confirmed').reduce((sum, t) => sum + t.amountKz, 0);
+}
+
+> src\services\backendApi.ts:47:export interface RemoteWallet {
+  src\services\backendApi.ts:48:  balanceKz: number;
+  src\services\backendApi.ts:49:  topups: RemoteTopUp[];
+  src\services\backendApi.ts:50:}
+  src\services\backendApi.ts:51:
+> src\services\backendApi.ts:52:export const walletRemote = {
+> src\services\backendApi.ts:53:  summary: () => call<RemoteWallet>('/wallet'),
+> src\services\backendApi.ts:54:  startTopUp: (amountKz: number) => call<RemoteTopUp>('/wallet/topups', 'POST', { 
+amountKz }),
+  src\services\backendApi.ts:55:  // So funciona em desenvolvimento (simula o Multicaixa). Em producao a confirmacao 
+vem por webhook.
+> src\services\backendApi.ts:56:  devConfirmTopUp: (id: string) => call<RemoteTopUp>(`/wallet/topups/${id}/confirm`, 
+'POST'),
+  src\services\backendApi.ts:57:};
+  src\services\backendApi.ts:58:
+  src\services\backendApi.ts:59:// --- Historico de viagens ---
+  src\services\backendApi.ts:60:interface RemoteTripRow {
+  src\services\backendApi.ts:61:  id: string;
+  src\services\backendApi.ts:62:  createdAt: string;
+
+=== wallet.service ===
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { WalletTopUp } from './entities/wallet-topup.entity';
+
+@Injectable()
+export class WalletService {
+  constructor(
+    @InjectRepository(WalletTopUp)
+    private readonly topUps: Repository<WalletTopUp>,
+  ) {}
+
+  /** saldo = carregamentos confirmados - viagens concluidas pagas com a carteira */
+  async summary(userId: string) {
+    const list = await this.topUps.find({ where: { userId }, order: { createdAt: 'DESC' }, take: 50 });
+    const confirmed = list.filter((t) => t.status === 'confirmed').reduce((s, t) => s + t.amountKz, 0);
+    const spentRows = await this.topUps.query(
+      `SELECT COALESCE(SUM("priceKz"),0) AS spent FROM trips WHERE "passengerId" = $1 AND status = 'completed' AND "paymentMethodType" = 'wallet'`,
+      [userId],
+    );
+    const spent = Number(spentRows[0]?.spent ?? 0);
+    return {
+      balanceKz: confirmed - spent,
+      topups: list.map((t) => ({ id: t.id, amountKz: t.amountKz, reference: t.reference, status: t.status, createdAt: t.createdAt })),
+    };
+  }
+
+  async startTopUp(userId: string, amountKz: number): Promise<WalletTopUp> {
+    const reference = `9${Math.floor(10000000 + Math.random() * 89999999)}`;
+    return this.topUps.save(this.topUps.create({ userId, amountKz, reference, status: 'processing' }));
+  }
+
+  /**
+   * SO DESENVOLVIMENTO: simula a confirmacao do Multicaixa. Em producao a confirmacao
+   * vem de um webhook assinado do fornecedor de pagamentos - nunca do proprio cliente.
+   * Bloqueado por omissao: exige ALLOW_DEV_TOPUP_CONFIRM=true explicito no .env, para
+   * nunca depender de NODE_ENV estar (ou nao) configurado corretamente em producao.
+   */
+  async devConfirm(userId: string, id: string): Promise<WalletTopUp> {
+    if (process.env.ALLOW_DEV_TOPUP_CONFIRM !== 'true') throw new ForbiddenException();
+    const topUp = await this.topUps.findOne({ where: { id, userId } });
+    if (!topUp) throw new NotFoundException('Carregamento nao encontrado.');
+    topUp.status = 'confirmed';
+    return this.topUps.save(topUp);
+  }
+}
+
+
+
+=== trips.service: pagamento e saldo ===
+  src\modules\trips\trips.service.ts:15:import { TrackingGateway, TripAssignedPayload } from 
+'../tracking/tracking.gateway';
+  src\modules\trips\trips.service.ts:16:import { DriverTripView } from './driver-trip.view';
+> src\modules\trips\trips.service.ts:17:import { DriverWalletService } from '../driver-wallet/driver-wallet.service';
+  src\modules\trips\trips.service.ts:18:import { DriverDocumentsService } from 
+'../driver-documents/driver-documents.service';
+> src\modules\trips\trips.service.ts:19:import { WalletService } from '../wallet/wallet.service';
+  src\modules\trips\trips.service.ts:20:
+  src\modules\trips\trips.service.ts:21:export interface CategoryEstimate {
+  src\modules\trips\trips.service.ts:22:  categoryId: VehicleCategoryId;
+  src\modules\trips\trips.service.ts:43:    private readonly tripsRepository: Repository<Trip>,
+  src\modules\trips\trips.service.ts:44:    private readonly tracking: TrackingGateway,
+> src\modules\trips\trips.service.ts:45:    private readonly driverWallet: DriverWalletService,
+  src\modules\trips\trips.service.ts:46:    private readonly driverDocs: DriverDocumentsService,
+> src\modules\trips\trips.service.ts:47:    private readonly passengerWallet: WalletService,
+  src\modules\trips\trips.service.ts:48:  ) {
+  src\modules\trips\trips.service.ts:49:    this.startReservationSweeper();
+  src\modules\trips\trips.service.ts:50:  }
+  src\modules\trips\trips.service.ts:98:      boardingCode,
+  src\modules\trips\trips.service.ts:99:      scheduledFor: dto.scheduledFor ? new Date(dto.scheduledFor) : undefined,
+> src\modules\trips\trips.service.ts:100:      paymentMethodType: dto.paymentMethodType ?? 'wallet',
+> src\modules\trips\trips.service.ts:101:      cashNoteKz: dto.paymentMethodType === 'cash' ? dto.cashNoteKz : 
+undefined,
+  src\modules\trips\trips.service.ts:102:      changeKz:
+> src\modules\trips\trips.service.ts:103:        dto.paymentMethodType === 'cash' && dto.cashNoteKz
+  src\modules\trips\trips.service.ts:104:          ? Math.max(0, dto.cashNoteKz - calculateTripPrice(distanceKm, 
+dto.categoryId))
+  src\modules\trips\trips.service.ts:105:          : undefined,
+  src\modules\trips\trips.service.ts:106:      comfortPreferences: dto.comfortPreferences,
+  src\modules\trips\trips.service.ts:128:
+  src\modules\trips\trips.service.ts:129:  /**
+> src\modules\trips\trips.service.ts:130:   * Pagamento por carteira e debitado automaticamente: o saldo (wallet do
+> src\modules\trips\trips.service.ts:131:   * passageiro) ja desconta viagens concluidas pagas por wallet. Se o saldo
+  src\modules\trips\trips.service.ts:132:   * ficar negativo, a viagem fica concluida mas NAO fica confirmada como
+  src\modules\trips\trips.service.ts:133:   * paga por carteira (paymentConfirmed=false).
+  src\modules\trips\trips.service.ts:134:   */
+  src\modules\trips\trips.service.ts:135:  private async paymentConfirmedFor(trip: Trip): Promise<boolean> {
+  src\modules\trips\trips.service.ts:136:    if (trip.status !== TripStatus.COMPLETED) return false;
+> src\modules\trips\trips.service.ts:137:    if (trip.paymentMethodType !== 'wallet') return true;
+  src\modules\trips\trips.service.ts:138:    if (!trip.passenger?.id) return true;
+> src\modules\trips\trips.service.ts:139:    const { balanceKz } = await 
+this.passengerWallet.summary(trip.passenger.id);
+> src\modules\trips\trips.service.ts:140:    return balanceKz >= 0;
+  src\modules\trips\trips.service.ts:141:  }
+  src\modules\trips\trips.service.ts:142:
+  src\modules\trips\trips.service.ts:143:  findAllForPassenger(passengerId: string): Promise<Trip[]> {
+  src\modules\trips\trips.service.ts:239:  }
+  src\modules\trips\trips.service.ts:240:
+> src\modules\trips\trips.service.ts:241:  // Sem saldo para a comissao (ou abaixo do minimo) nao recebe corridas.
+  src\modules\trips\trips.service.ts:242:  // Motoristas demo (so em desenvolvimento) ficam isentos: nao tem carteira.
+  src\modules\trips\trips.service.ts:243:  private async filterOperational<T extends { driver: Driver }>(list: T[], 
+commissionKz: number): Promise<T[]> {
+  src\modules\trips\trips.service.ts:244:    const demoPhones = DEMO_DRIVERS.map((d) => d.phone);
+  src\modules\trips\trips.service.ts:252:      if (!(await this.driverDocs.areAllApproved(item.driver.id))) continue;
+  src\modules\trips\trips.service.ts:253:      if (!(await vehicleApproved(this.tripsRepository.manager, 
+item.driver.id))) continue;
+> src\modules\trips\trips.service.ts:254:      if (await this.driverWallet.canOperate(item.driver.id, commissionKz)) 
+result.push(item);
+  src\modules\trips\trips.service.ts:255:    }
+  src\modules\trips\trips.service.ts:256:    return result;
+  src\modules\trips\trips.service.ts:257:  }
+  src\modules\trips\trips.service.ts:269:      estimatedCommissionKz: this.driverCommissionKz(trip.priceKz),
+  src\modules\trips\trips.service.ts:270:      zoneIncentiveKz: trip.zoneIncentiveKz ?? 0,
+> src\modules\trips\trips.service.ts:271:      paymentMethod: trip.paymentMethodType,
+  src\modules\trips\trips.service.ts:272:      passengerCoordinates: { latitude: trip.origin.latitude, longitude: 
+trip.origin.longitude },
+  src\modules\trips\trips.service.ts:273:      destinationCoordinates: (() => { const z = 
+findZone(trip.destination.latitude, trip.destination.longitude); return { latitude: z.centerLat, longitude: z.centerLng 
+}; })(),
+  src\modules\trips\trips.service.ts:274:    };
+  src\modules\trips\trips.service.ts:359:          [t.driverId, t.id, PENALTY_DAYS],
+  src\modules\trips\trips.service.ts:360:        );
+> src\modules\trips\trips.service.ts:361:        try { await this.driverWallet.releaseCommission(t.driverId, t.id); } 
+catch { /* sem reserva de comissao */ }
+  src\modules\trips\trips.service.ts:362:        const declined = this.declinedDrivers.get(t.id) ?? new Set<string>();
+  src\modules\trips\trips.service.ts:363:        declined.add(t.driverId);
+  src\modules\trips\trips.service.ts:364:        this.declinedDrivers.set(t.id, declined);
+  src\modules\trips\trips.service.ts:468:    if (!(await this.driverDocs.areAllApproved(driverId))) throw new 
+BadRequestException('Precisas dos documentos aprovados para reservar.');
+  src\modules\trips\trips.service.ts:469:    if (!(await vehicleApproved(m, driverId))) throw new 
+BadRequestException('Precisas de um veiculo aprovado para reservar.');
+> src\modules\trips\trips.service.ts:470:    if (!(await this.driverWallet.canOperate(driverId, 
+this.driverCommissionKz(trip.priceKz)))) {
+> src\modules\trips\trips.service.ts:471:      throw new BadRequestException('Saldo insuficiente para a comissao desta 
+reserva.');
+  src\modules\trips\trips.service.ts:472:    }
+  src\modules\trips\trips.service.ts:473:    const clash = await m.query(
+  src\modules\trips\trips.service.ts:474:      `SELECT 1 FROM trip_reservation_claims c JOIN trips t ON t.id = 
+c."tripId"
+  src\modules\trips\trips.service.ts:529:    await this.awardPoints(userId, trip.priceKz);
+  src\modules\trips\trips.service.ts:530:    if (trip.driver) {
+> src\modules\trips\trips.service.ts:531:      await this.driverWallet.settleCommission(trip.driver.id, trip.id, await 
+this.commissionFor(trip.driver.id, trip.priceKz));
+> src\modules\trips\trips.service.ts:532:      await this.driverWallet.payZoneIncentive(trip.driver.id, trip.id, 
+trip.zoneIncentiveKz ?? 0);
+  src\modules\trips\trips.service.ts:533:    }
+  src\modules\trips\trips.service.ts:534:    if (typeof actualDistanceKm === 'number') trip.actualDistanceKm = 
+Number(actualDistanceKm.toFixed(2));
+  src\modules\trips\trips.service.ts:535:    const saved = await this.tripsRepository.save(trip);
+  src\modules\trips\trips.service.ts:576:      zoneIncentiveKz: trip.zoneIncentiveKz ?? 0,
+  src\modules\trips\trips.service.ts:577:      netEarningsKz: trip.priceKz - commissionKz + (trip.zoneIncentiveKz ?? 0),
+> src\modules\trips\trips.service.ts:578:      paymentMethodType: trip.paymentMethodType,
+  src\modules\trips\trips.service.ts:579:      boardingConfirmed: !!trip.boardingConfirmedAt,
+  src\modules\trips\trips.service.ts:580:    };
+  src\modules\trips\trips.service.ts:581:  }
+  src\modules\trips\trips.service.ts:615:      throw new BadRequestException('Esta viagem ja nao esta disponivel para 
+aceitar.');
+  src\modules\trips\trips.service.ts:616:    }
+> src\modules\trips\trips.service.ts:617:    await this.driverWallet.reserveCommission(driverId, trip.id, await 
+this.commissionFor(driverId, trip.priceKz));
+  src\modules\trips\trips.service.ts:618:    trip.status = TripStatus.DRIVER_ARRIVING;
+  src\modules\trips\trips.service.ts:619:    const saved = await this.tripsRepository.save(trip);
+  src\modules\trips\trips.service.ts:620:    this.tracking.broadcastTripStatus({ tripId: saved.id, status: saved.status 
+});
+  src\modules\trips\trips.service.ts:748:    if (trip.passenger?.id) await this.awardPoints(trip.passenger.id, 
+trip.priceKz);
+  src\modules\trips\trips.service.ts:749:    await this.releaseDriver(trip);
+> src\modules\trips\trips.service.ts:750:    await this.driverWallet.settleCommission(driverId, trip.id, await 
+this.commissionFor(driverId, trip.priceKz));
+> src\modules\trips\trips.service.ts:751:    await this.driverWallet.payZoneIncentive(driverId, trip.id, 
+trip.zoneIncentiveKz ?? 0);
+  src\modules\trips\trips.service.ts:752:    this.declinedDrivers.delete(trip.id);
+  src\modules\trips\trips.service.ts:753:    this.boardingAttempts.delete(trip.id);
+  src\modules\trips\trips.service.ts:754:    this.tracking.broadcastTripStatus({ tripId: saved.id, status: saved.status 
+});
+  src\modules\trips\trips.service.ts:763:    trip.status = TripStatus.CANCELLED;
+  src\modules\trips\trips.service.ts:764:    trip.cancelReason = reason?.slice(0, 200);
+> src\modules\trips\trips.service.ts:765:    if (trip.driver) await this.driverWallet.releaseCommission(trip.driver.id, 
+trip.id);
+  src\modules\trips\trips.service.ts:766:    const saved = await this.tripsRepository.save(trip);
+  src\modules\trips\trips.service.ts:767:    await this.releaseDriver(trip);
+  src\modules\trips\trips.service.ts:768:    this.tracking.broadcastTripStatus({ tripId: saved.id, status: saved.status 
+});
+
+=== identity-documents (backend) ===
+--- reject-identity-document.dto.ts
+import { IsString, MaxLength, MinLength } from 'class-validator';
+
+export class RejectIdentityDocumentDto {
+  @IsString()
+  @MinLength(3)
+  @MaxLength(300)
+  reason: string;
+}
+
+--- submit-identity-document.dto.ts
+import { IsString, MaxLength, MinLength } from 'class-validator';
+
+export class SubmitIdentityDocumentDto {
+  // Imagem em base64 (com ou sem prefixo data:). Limite ~8 MB de imagem.
+  @IsString()
+  @MinLength(100)
+  @MaxLength(12000000)
+  imageBase64: string;
+}
+
+--- user-document.entity.ts
+import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+
+/** Documentos de identidade do passageiro: BI (frente/verso) e selfie. Nunca se auto-aprova. */
+export const REQUIRED_IDENTITY_DOCUMENTS = ['bi_front', 'bi_back', 'selfie'] as const;
+export type IdentityDocumentType = (typeof REQUIRED_IDENTITY_DOCUMENTS)[number];
+export type IdentityDocumentStatus = 'pending' | 'approved' | 'rejected';
+
+@Entity('user_documents')
+@Index(['userId', 'type'], { unique: true })
+export class UserDocument {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Index()
+  @Column('uuid')
+  userId: string;
+
+  @Column({ type: 'varchar', length: 30 })
+  type: string;
+
+  @Column({ type: 'varchar', length: 20, default: 'pending' })
+  status: IdentityDocumentStatus;
+
+  // Caminho no disco do servidor - nunca e devolvido ao cliente.
+  @Column({ type: 'varchar', length: 400 })
+  filePath: string;
+
+  @Column({ type: 'varchar', length: 20 })
+  mimeType: string;
+
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  rejectionReason: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  reviewedAt: Date | null;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+}
+
+--- identity-documents.controller.ts
+import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { IdentityDocumentsService } from './identity-documents.service';
+import { SubmitIdentityDocumentDto } from './dto/submit-identity-document.dto';
+
+/** O id do passageiro vem sempre do token (jwt), nunca do cliente. */
+@Controller('identity-documents')
+@UseGuards(AuthGuard('jwt'))
+export class IdentityDocumentsController {
+  constructor(private readonly service: IdentityDocumentsService) {}
+
+  @Get()
+  list(@Req() req: any) {
+    return this.service.list(req.user.userId);
+  }
+
+  @Post(':type')
+  submit(@Req() req: any, @Param('type') type: string, @Body() dto: SubmitIdentityDocumentDto) {
+    return this.service.submit(req.user.userId, type, dto.imageBase64);
+  }
+}
+
+--- identity-documents.module.ts
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { UserDocument } from './entities/user-document.entity';
+import { IdentityDocumentsService } from './identity-documents.service';
+import { IdentityDocumentsController } from './identity-documents.controller';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([UserDocument])],
+  controllers: [IdentityDocumentsController],
+  providers: [IdentityDocumentsService],
+  exports: [IdentityDocumentsService],
+})
+export class IdentityDocumentsModule {}
+--- identity-documents.service.ts
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { randomUUID } from 'crypto';
+import { promises as fs } from 'fs';
+import * as path from 'path';
+import { REQUIRED_IDENTITY_DOCUMENTS, UserDocument } from './entities/user-document.entity';
+
+const UPLOAD_ROOT = path.resolve(process.cwd(), 'uploads', 'identity-docs');
+const MAX_BYTES = 8 * 1024 * 1024;
+
+// O tipo do ficheiro e decidido pelos primeiros bytes, nunca pelo que o cliente diz.
+function detectImage(buf: Buffer): { ext: string; mime: string } | null {
+  if (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return { ext: 'jpg', mime: 'image/jpeg' };
+  if (buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return { ext: 'png', mime: 'image/png' };
+  return null;
+}
+
+@Injectable()
+export class IdentityDocumentsService {
+  constructor(
+    @InjectRepository(UserDocument)
+    private readonly repo: Repository<UserDocument>,
+  ) {}
+
+  // ---------- lado do passageiro ----------
+
+  async list(userId: string) {
+    const docs = await this.repo.find({ where: { userId } });
+    return REQUIRED_IDENTITY_DOCUMENTS.map((type) => {
+      const d = docs.find((x) => x.type === type);
+      return {
+        type,
+        status: d ? d.status : 'not_submitted',
+        rejectionReason: d?.rejectionReason ?? null,
+        updatedAt: d?.updatedAt ?? null,
+      };
+    });
+  }
+
+  async submit(userId: string, type: string, imageBase64: string) {
+    if (!(REQUIRED_IDENTITY_DOCUMENTS as readonly string[]).includes(type)) {
+      throw new BadRequestException('Tipo de documento invalido.');
+    }
+    const clean = imageBase64.replace(/^data:[^;]+;base64,/, '');
+    const buf = Buffer.from(clean, 'base64');
+    if (buf.length === 0 || buf.length > MAX_BYTES) {
+      throw new BadRequestException('Imagem invalida ou maior que 8 MB.');
+    }
+    const kind = detectImage(buf);
+    if (!kind) throw new BadRequestException('Formato invalido. Envia uma imagem JPEG ou PNG.');
+
+    const existing = await this.repo.findOne({ where: { userId, type } });
+    if (existing?.status === 'approved') {
+      throw new BadRequestException('Este documento ja foi aprovado.');
+    }
+
+    const dir = path.join(UPLOAD_ROOT, userId);
+    await fs.mkdir(dir, { recursive: true });
+    const filePath = path.join(dir, `${type}-${randomUUID()}.${kind.ext}`);
+    await fs.writeFile(filePath, buf);
+    if (existing?.filePath) await fs.unlink(existing.filePath).catch(() => undefined);
+
+    const doc = existing ?? this.repo.create({ userId, type });
+    doc.status = 'pending';
+    doc.filePath = filePath;
+    doc.mimeType = kind.mime;
+    doc.rejectionReason = null;
+    doc.reviewedAt = null;
+    await this.repo.save(doc);
+    return { type, status: doc.status, rejectionReason: null, updatedAt: doc.updatedAt };
+  }
+
+  async areAllApproved(userId: string): Promise<boolean> {
+    const docs = await this.repo.find({ where: { userId, status: 'approved' } });
+    const approved = new Set(docs.map((d) => d.type));
+    return REQUIRED_IDENTITY_DOCUMENTS.every((t) => approved.has(t));
+  }
+
+  // ---------- revisao (admin, mesmo guard do painel) ----------
+
+  listForReview(status?: string) {
+    const s = status === 'all' ? null : status && ['pending', 'approved', 'rejected'].includes(status) ? status : 'pending';
+    return this.repo.query(
+      `SELECT d.id, d."userId", d.type, d.status, d."rejectionReason", d."createdAt", d."updatedAt", u."fullName", u.phone
+       FROM user_documents d JOIN users u ON u.id = d."userId"
+       WHERE ($1::text IS NULL OR d.status = $1)
+       ORDER BY d."updatedAt" ASC LIMIT 300`,
+      [s],
+    );
+  }
+
+  async info(id: string): Promise<{ userId: string; type: string }> {
+    const doc = await this.repo.findOne({ where: { id } });
+    if (!doc) throw new NotFoundException('Documento nao encontrado.');
+    return { userId: doc.userId, type: doc.type };
+  }
+
+  async getFile(id: string): Promise<{ filePath: string; mimeType: string }> {
+    const doc = await this.repo.findOne({ where: { id } });
+    if (!doc) throw new NotFoundException('Documento nao encontrado.');
+    const resolved = path.resolve(doc.filePath);
+    if (!resolved.startsWith(UPLOAD_ROOT + path.sep)) throw new ForbiddenException();
+    return { filePath: resolved, mimeType: doc.mimeType };
+  }
+
+  async approve(id: string) {
+    const doc = await this.repo.findOne({ where: { id } });
+    if (!doc) throw new NotFoundException('Documento nao encontrado.');
+    doc.status = 'approved';
+    doc.rejectionReason = null;
+    doc.reviewedAt = new Date();
+    await this.repo.save(doc);
+
+    // Com os 3 aprovados, o passageiro passa a "verificado".
+    const allApproved = await this.areAllApproved(doc.userId);
+    if (allApproved) {
+      await this.repo.query(
+        `UPDATE user_profiles SET "isVerified" = true, "verificationStatus" = 'verified', "verifiedAt" = now() WHERE "userId" = $1`,
+        [doc.userId],
+      );
+    }
+    return { id: doc.id, type: doc.type, status: doc.status, allApproved };
+  }
+
+  async reject(id: string, reason: string) {
+    const doc = await this.repo.findOne({ where: { id } });
+    if (!doc) throw new NotFoundException('Documento nao encontrado.');
+    doc.status = 'rejected';
+    doc.rejectionReason = reason;
+    doc.reviewedAt = new Date();
+    await this.repo.save(doc);
+    await this.repo.query(
+      `UPDATE user_profiles SET "isVerified" = false, "verificationStatus" = 'rejected' WHERE "userId" = $1`,
+      [doc.userId],
+    );
+    return { id: doc.id, type: doc.type, status: doc.status };
+  }
+}
+
+
+=== profile.service ===
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { UserProfile } from './entities/user-profile.entity';
+
+@Injectable()
+export class ProfileService {
+  constructor(
+    @InjectRepository(UserProfile)
+    private readonly profiles: Repository<UserProfile>,
+  ) {}
+
+  async getOrCreate(userId: string): Promise<UserProfile> {
+    let profile = await this.profiles.findOne({ where: { userId } });
+    if (!profile) {
+      await this.profiles.query(
+        `INSERT INTO user_profiles ("userId","isVerified","angoPoints") VALUES ($1,false,0) ON CONFLICT ("userId") DO NOTHING`,
+        [userId],
+      );
+      profile = await this.profiles.findOneOrFail({ where: { userId } });
+    }
+    return profile;
+  }
+
+  /**
+   * Submete BI + selfie para revisao. NUNCA auto-aprova: fica "pending" ate um
+   * revisor confirmar no Admin (Document Center). isVerified so passa a true
+   * quando esse fluxo (ainda por construir) chamar approveVerification().
+   */
+  async verifyIdentity(userId: string): Promise<UserProfile> {
+    // So se submete para revisao com os 3 documentos enviados (BI frente e verso, selfie).
+    const docs: Array<{ ok: number }> = await this.profiles.query(
+      'SELECT COUNT(*) FILTER (WHERE status <> \'rejected\')::int AS ok FROM user_documents WHERE "userId" = $1',
+      [userId],
+    );
+    if (Number(docs[0]?.ok ?? 0) < 3) {
+      throw new BadRequestException('Envia o BI (frente e verso) e a selfie antes de submeter a verificacao.');
+    }
+    const profile = await this.getOrCreate(userId);
+    if (profile.verificationStatus !== 'verified') {
+      profile.verificationStatus = 'pending';
+    }
+    return this.profiles.save(profile);
+  }
+
+  async approveVerification(userId: string): Promise<UserProfile> {
+    const profile = await this.getOrCreate(userId);
+    profile.isVerified = true;
+    profile.verificationStatus = 'verified';
+    profile.verifiedAt = new Date();
+    return this.profiles.save(profile);
+  }
+}
+
+
+
+=== revisao de identidade no admin (backend) ===
+src\modules\admin-ops\admin-ops.controller.ts:11  import { IdentityDocumentsService } from '../identity-documents/identity-documents.service';
+src\modules\admin-ops\admin-ops.controller.ts:12  import { RejectIdentityDocumentDto } from '../identity-documents/dto/reject-identity-document.dto';
+src\modules\admin-ops\admin-ops.controller.ts:21  private readonly identity: IdentityDocumentsService,
+src\modules\admin-ops\admin-ops.controller.ts:339  @Get('identity-documents')
+src\modules\admin-ops\admin-ops.controller.ts:341  identityDocuments(@Query('status') status?: string) {
+src\modules\admin-ops\admin-ops.controller.ts:342  return this.identity.listForReview(status);
+src\modules\admin-ops\admin-ops.controller.ts:345  @Get('identity-documents/:id/file')
+src\modules\admin-ops\admin-ops.controller.ts:347  async identityFile(@Req() req: any, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+src\modules\admin-ops\admin-ops.controller.ts:348  const { filePath, mimeType } = await this.identity.getFile(id);
+src\modules\admin-ops\admin-ops.controller.ts:349  const info = await this.identity.info(id);
+src\modules\admin-ops\admin-ops.controller.ts:351  adminId: req.user.adminId, adminEmail: req.user.email, action: 'identity_document_viewed',
+src\modules\admin-ops\admin-ops.controller.ts:358  @Patch('identity-documents/:id/approve')
+src\modules\admin-ops\admin-ops.controller.ts:360  async approveIdentityDocument(@Req() req: any, @Param('id', ParseUUIDPipe) id: string) {
+src\modules\admin-ops\admin-ops.controller.ts:361  const info = await this.identity.info(id);
+src\modules\admin-ops\admin-ops.controller.ts:362  const result = await this.identity.approve(id);
+src\modules\admin-ops\admin-ops.controller.ts:364  adminId: req.user.adminId, adminEmail: req.user.email, action: 'identity_document_approved',
+src\modules\admin-ops\admin-ops.controller.ts:370  @Patch('identity-documents/:id/reject')
+src\modules\admin-ops\admin-ops.controller.ts:372  async rejectIdentityDocument(@Req() req: any, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RejectIdentityDocumentDto) {
+src\modules\admin-ops\admin-ops.controller.ts:373  const info = await this.identity.info(id);
+src\modules\admin-ops\admin-ops.controller.ts:374  const result = await this.identity.reject(id, dto.reason);
+src\modules\admin-ops\admin-ops.controller.ts:376  adminId: req.user.adminId, adminEmail: req.user.email, action: 'identity_document_rejected',
+src\modules\admin-ops\admin-ops.module.ts:4  import { IdentityDocumentsModule } from '../identity-documents/identity-documents.module';
+src\modules\admin-ops\admin-ops.module.ts:10  imports: [AdminAuthModule, DriverDocumentsModule, DriverWalletModule, IdentityDocumentsModule],
+src\modules\admin-ops\admin-ops.service.ts:196  CASE WHEN u."isVerified" THEN 'verified' ELSE 'none' END AS "verificationStatus",
+src\modules\admin-ops\admin-ops.service.ts:220  CASE WHEN "isVerified" THEN 'verified' ELSE 'none' END AS "verificationStatus"
+src\modules\admin-people\admin-people.service.ts:24  COALESCE(p."verificationStatus", 'none') AS "verificationStatus",
+src\modules\admin-people\admin-people.service.ts:44  COALESCE(p."verificationStatus", 'none') AS "verificationStatus",
+
+=== identidade no painel ===
+src\App.tsx:11  import { IdentityPage } from './identity';
+src\App.tsx:25  '/verificacoes': <IdentityPage />,
+src\App.tsx:75  { path: '/verificacoes', label: 'Verificacoes', icon: UserRound, roles: ['operations'], phase: 'Fase 1 - Operacao' },
+src\identity.tsx:16  export function IdentityPage() {
+src\identity.tsx:28  api<Row[]>('/admin/identity-documents?status=' + status).then(setData).catch((e) => setError((e as Error).message)).finally(() => setLoading(false));
+src\identity.tsx:34  try { setImg(await apiBlob('/admin/identity-documents/' + id + '/file')); } catch (e) { setActionError((e as Error).message); }
+src\identity.tsx:48  await api('/admin/identity-documents/' + id + '/' + kind, { method: 'PATCH', body });
+src\identity.tsx:61  <h2>Verificacoes de identidade</h2>
+src\ops.tsx:136  <option value="">Verificados e nao</option><option value="yes">Verificados</option><option value="no">Por verificar</option>
+src\ops.tsx:146  <thead><tr><th>Nome</th><th>Telefone</th><th>Estado</th><th>Avaliacao</th><th>Viagens</th><th>Documentos</th><th>Verificado</th><th></th></tr></thead>
+src\ops.tsx:190  <div className="actions"><Badge map={DRIVER_STATUS} value={d.status} />{d.isVerified ? <span className="badge ok">Verificado</span> : <span className="badge warn">Por verificar</span>}</div>
+src\people.tsx:10  const VERIFICATION: StatusMap = {
+src\people.tsx:11  none: { label: 'Sem verificacao', cls: '' },
+src\people.tsx:13  verified: { label: 'Verificado', cls: 'ok' },
+src\people.tsx:59  verificationStatus: string; angoPoints: number; tripsCompleted: number; tripsCancelled: number;
+src\people.tsx:81  <thead><tr><th>Nome</th><th>Telefone</th><th>Registado</th><th>Viagens</th><th>Canceladas</th><th>AngoPoints</th><th>Verificacao</th><th></th></tr></thead>
+src\people.tsx:87  <td><Badge map={VERIFICATION} value={p.verificationStatus} /></td>
+src\people.tsx:104  passenger: { id: string; fullName: string; phone: string; email: string | null; createdAt: string; verificationStatus: string; angoPoints: number };
+src\people.tsx:122  <div className="actions"><Badge map={VERIFICATION} value={p.verificationStatus} /></div>
+
+

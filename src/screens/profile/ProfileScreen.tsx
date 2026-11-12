@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Alert } from 'react-native';
+import type { ComponentRef } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenContainer from '../../components/common/ScreenContainer';
@@ -13,6 +14,7 @@ import IdentityVerificationModal from '../../components/trip/IdentityVerificatio
 import TrustProfileCard from '../../components/trip/TrustProfileCard';
 import AddFamilyMemberModal from '../../components/trip/AddFamilyMemberModal';
 import FavoritePlacesModal from '../../components/trip/FavoritePlacesModal';
+import EditPersonalDataModal from '../../components/trip/EditPersonalDataModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { getFamilyMembers, addFamilyMember, removeFamilyMember, FamilyMember } from '../../services/familyStore';
 import { getFavoritePlaces } from '../../services/favoritePlacesStore';
@@ -47,7 +49,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function ProfileScreen() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, updateProfile } = useAuth();
   const navigation = useNavigation<any>();
   const [activeAnchor, setActiveAnchor] = useState(ANCHORS[0].id);
   const [incidentVisible, setIncidentVisible] = useState(false);
@@ -55,9 +57,10 @@ export default function ProfileScreen() {
   const [verificationVisible, setVerificationVisible] = useState(false);
   const [addFamilyVisible, setAddFamilyVisible] = useState(false);
   const [favoritesVisible, setFavoritesVisible] = useState(false);
+  const [editPersonalVisible, setEditPersonalVisible] = useState(false);
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [favorites, setFavorites] = useState<SavedPlace[]>([]);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ComponentRef<typeof ScrollView> | null>(null);
   const offsets = useRef<Record<string, number>>({});
 
   useEffect(() => {
@@ -74,6 +77,14 @@ export default function ProfileScreen() {
   const handleSupportItemPress = (label: string) => {
     if (label === 'Reportar um problema') setIncidentVisible(true);
     else if (label === 'Objetos perdidos') setLostItemVisible(true);
+    else if (label === 'Central de ajuda') {
+      Alert.alert('Central de ajuda', 'Para ajuda com uma viagem ou com a tua conta, usa Reportar um problema: o teu caso recebe um numero oficial e a equipa responde.', [
+        { text: 'Fechar', style: 'cancel' },
+        { text: 'Reportar um problema', onPress: () => setIncidentVisible(true) },
+      ]);
+    } else if (label === 'Termos e privacidade') {
+      Alert.alert('Termos e privacidade', 'Os Termos de Uso e a Politica de Privacidade serao publicados antes do lancamento oficial.');
+    }
   };
 
   const handleAddFamilyMember = async (name: string, phone: string, relationship: string) => {
@@ -128,7 +139,7 @@ export default function ProfileScreen() {
             <InfoRow label="Data de nascimento" value={user?.birthDate || 'Nao definida'} />
             <InfoRow label="Idioma" value={user?.preferredLanguage === 'en' ? 'English' : 'Portugues'} />
           </View>
-          <TouchableOpacity style={styles.editButton} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.editButton} activeOpacity={0.8} onPress={() => setEditPersonalVisible(true)}>
             <Ionicons name="create-outline" size={16} color={colors.primary} />
             <Text style={styles.editButtonText}>Editar dados pessoais</Text>
           </TouchableOpacity>
@@ -270,6 +281,7 @@ export default function ProfileScreen() {
       <IdentityVerificationModal visible={verificationVisible} onClose={() => setVerificationVisible(false)} />
       <AddFamilyMemberModal visible={addFamilyVisible} onClose={() => setAddFamilyVisible(false)} onAdd={handleAddFamilyMember} />
       <FavoritePlacesModal visible={favoritesVisible} onClose={() => setFavoritesVisible(false)} onChanged={setFavorites} />
+      <EditPersonalDataModal visible={editPersonalVisible} onClose={() => setEditPersonalVisible(false)} user={user} onSaved={(data) => updateProfile(data)} />
     </ScreenContainer>
   );
 }

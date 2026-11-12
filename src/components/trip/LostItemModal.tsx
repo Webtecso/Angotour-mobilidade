@@ -3,7 +3,7 @@ import { Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { recordIncident } from '../../services/incidentStore';
-import { tripHistory } from '../../services/mockData';
+import { useTripHistory } from '../../hooks/useBackendData';
 import { colors, radius, spacing, typography } from '../../constants/theme';
 
 interface LostItemModalProps {
@@ -22,6 +22,7 @@ const ITEM_TYPES: { id: string; label: string; icon: React.ComponentProps<typeof
 ];
 
 export default function LostItemModal({ visible, onClose }: LostItemModalProps) {
+  const { data: tripHistory } = useTripHistory([]);
   const [tripId, setTripId] = useState<string | null>(null);
   const [itemId, setItemId] = useState<string | null>(null);
   const [description, setDescription] = useState('');

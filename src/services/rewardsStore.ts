@@ -1,8 +1,9 @@
-﻿import AsyncStorage from '@react-native-async-storage/async-storage';
-import { rewardsRemote } from './extrasApi';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { rewardsRemote, RemoteRewardCatalogItem } from './extrasApi';
 import { withTimeout } from './remoteSync';
 
 const STORAGE_KEY = '@angotour/redeemed_rewards';
+const CATALOG_KEY = '@angotour/rewards_catalog';
 
 export interface RedeemedReward {
   id: string;
@@ -11,13 +12,6 @@ export interface RedeemedReward {
   costPoints: number;
   code: string;
   dateIso: string;
-}
-
-function generateVoucherCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let suffix = '';
-  for (let i = 0; i < 6; i += 1) suffix += chars.charAt(Math.floor(Math.random() * chars.length));
-  return 'AT-' + suffix;
 }
 
 export async function getRedeemedRewards(): Promise<RedeemedReward[]> {
@@ -44,10 +38,27 @@ export async function getRedeemedRewards(): Promise<RedeemedReward[]> {
 }
 
 /**
- * Resgata no servidor (que confirma e desconta os pontos com seguranca). Se
- * falhar (sem rede, sem sessao), resgata so localmente com um codigo gerado
- * aqui - nunca bloqueia o utilizador, mas nesse caso os pontos nao descontam
- * no servidor ate haver rede outra vez.
+ * Catalogo real do servidor (o servidor e a fonte da verdade do custo em
+ * pontos). Sem rede, cai para a ultima copia guardada localmente.
+ */
+export async function getRewardsCatalog(): Promise<RemoteRewardCatalogItem[]> {
+  try {
+    const remote = await withTimeout(rewardsRemote.list());
+    await AsyncStorage.setItem(CATALOG_KEY, JSON.stringify(remote.catalog));
+    return remote.catalog;
+  } catch {
+    try {
+      const raw = await AsyncStorage.getItem(CATALOG_KEY);
+      return raw ? (JSON.parse(raw) as RemoteRewardCatalogItem[]) : [];
+    } catch {
+      return [];
+    }
+  }
+}
+
+/**
+ * Resgata no servidor, que confirma e desconta os pontos. Sem confirmacao do
+ * servidor nao ha voucher: a funcao falha com o motivo, em vez de inventar um codigo.
  */
 export async function saveRedeemedReward(reward: { id: string; title: string; costPoints: number }): Promise<RedeemedReward> {
   try {
@@ -67,25 +78,8 @@ export async function saveRedeemedReward(reward: { id: string; title: string; co
       // falha ao gravar localmente nao invalida o resgate ja confirmado no servidor
     }
     return record;
-  } catch {
-    const record: RedeemedReward = {
-      id: 'rd-' + Date.now(),
-      rewardId: reward.id,
-      title: reward.title,
-      costPoints: reward.costPoints,
-      code: generateVoucherCode(),
-      dateIso: new Date().toISOString(),
-    };
-    try {
-      const raw = await AsyncStorage.getItem(STORAGE_KEY);
-      const all: RedeemedReward[] = raw ? JSON.parse(raw) : [];
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([record, ...all]));
-    } catch {
-      // falha ao gravar nao bloqueia o resgate
-    }
-    return record;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '';
+    throw new Error(msg === 'timeout' ? 'Sem ligacao ao servidor. Tenta outra vez.' : msg || 'Nao foi possivel resgatar.');
   }
 }
-
-
-

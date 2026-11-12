@@ -1,9 +1,9 @@
-﻿import React, { useEffect, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
-import { RewardItem, rewardsCatalog } from '../../services/mockData';
-import { RedeemedReward, getRedeemedRewards, saveRedeemedReward } from '../../services/rewardsStore';
+import { RemoteRewardCatalogItem } from '../../services/extrasApi';
+import { RedeemedReward, getRedeemedRewards, getRewardsCatalog, saveRedeemedReward } from '../../services/rewardsStore';
 import { KZ_PER_ANGOPOINT } from '../../constants/loyalty';
 import { colors, radius, spacing, typography } from '../../constants/theme';
 
@@ -12,7 +12,7 @@ interface RewardsModalProps {
   onClose: () => void;
 }
 
-const CATEGORY_ICONS: Record<RewardItem['category'], React.ComponentProps<typeof Ionicons>['name']> = {
+const CATEGORY_ICONS: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
   hotel: 'bed-outline',
   restaurante: 'restaurant-outline',
   experiencia: 'compass-outline',
@@ -21,6 +21,7 @@ const CATEGORY_ICONS: Record<RewardItem['category'], React.ComponentProps<typeof
 
 export default function RewardsModal({ visible, onClose }: RewardsModalProps) {
   const { user, spendAngoPoints } = useAuth();
+  const [catalog, setCatalog] = useState<RemoteRewardCatalogItem[]>([]);
   const [redeemed, setRedeemed] = useState<RedeemedReward[]>([]);
   const [lastVoucher, setLastVoucher] = useState<RedeemedReward | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -31,16 +32,20 @@ export default function RewardsModal({ visible, onClose }: RewardsModalProps) {
     if (!visible) return;
     setLastVoucher(null);
     getRedeemedRewards().then(setRedeemed);
+    getRewardsCatalog().then(setCatalog);
   }, [visible]);
 
-  const handleRedeem = async (reward: RewardItem) => {
+  const handleRedeem = async (reward: RemoteRewardCatalogItem) => {
+    if (busyId) return;
     setBusyId(reward.id);
     try {
-      const ok = await spendAngoPoints(reward.costPoints);
-      if (!ok) return;
+      // O servidor confirma e desconta os pontos. Sem a confirmacao dele nao ha voucher.
       const record = await saveRedeemedReward(reward);
+      await spendAngoPoints(reward.costPoints); // espelha localmente o desconto ja feito no servidor
       setRedeemed((prev) => [record, ...prev]);
       setLastVoucher(record);
+    } catch (e) {
+      Alert.alert('Nao foi possivel resgatar', (e as Error).message);
     } finally {
       setBusyId(null);
     }
@@ -63,7 +68,6 @@ export default function RewardsModal({ visible, onClose }: RewardsModalProps) {
             </Text>
           </View>
 
-          <Text style={styles.demoNote}>Catalogo de demonstracao: parceiros e valores de exemplo.</Text>
 
           {lastVoucher ? (
             <View style={styles.voucherCard}>
@@ -75,12 +79,15 @@ export default function RewardsModal({ visible, onClose }: RewardsModalProps) {
           ) : null}
 
           <Text style={styles.sectionLabel}>Disponiveis</Text>
-          {rewardsCatalog.map((reward) => {
+          {catalog.length === 0 ? (
+            <Text style={styles.emptyText}>Sem recompensas disponiveis agora.</Text>
+          ) : null}
+          {catalog.map((reward) => {
             const canAfford = points >= reward.costPoints;
             return (
               <View key={reward.id} style={styles.rewardCard}>
                 <View style={styles.rewardIconBadge}>
-                  <Ionicons name={CATEGORY_ICONS[reward.category]} size={20} color={colors.ink} />
+                  <Ionicons name={CATEGORY_ICONS[reward.category] ?? 'gift-outline'} size={20} color={colors.ink} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.rewardTitle}>{reward.title}</Text>
@@ -130,6 +137,7 @@ const styles = StyleSheet.create({
   balanceValue: { ...typography.h2, color: colors.primaryDark, marginTop: spacing.xxs },
   balanceHint: { ...typography.caption, color: colors.primaryDark, textAlign: 'center', marginTop: spacing.xxs },
   demoNote: { ...typography.tiny, color: colors.textMuted, textAlign: 'center', marginBottom: spacing.md },
+  emptyText: { ...typography.caption, color: colors.textMuted, marginBottom: spacing.md },
   voucherCard: { alignItems: 'center', backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.primary, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.md },
   voucherTitle: { ...typography.bodyMedium, color: colors.textPrimary, textAlign: 'center', marginTop: spacing.xs },
   voucherCode: { ...typography.h2, color: colors.primaryDark, letterSpacing: 3, marginVertical: spacing.xxs },

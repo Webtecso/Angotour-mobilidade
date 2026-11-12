@@ -2,7 +2,7 @@
 
 const STORAGE_KEY = '@angotour/wallet_topups';
 
-export const INITIAL_BALANCE_KZ = 12500;
+export const INITIAL_BALANCE_KZ = 0;
 
 export interface WalletTopUp {
   id: string;

@@ -45,7 +45,8 @@ function enqueue(localId: string, action: string, task: (remoteId: string) => Pr
 export function mirrorCreateAndAssign(
   trip: TripRequest,
   preferFemale: boolean,
-  onRealDriverAssigned?: (localTripId: string, assignment: RealDriverAssignment) => void
+  onRealDriverAssigned?: (localTripId: string, assignment: RealDriverAssignment) => void,
+  onAssignFailed?: (localTripId: string, message: string) => void
 ): void {
   if (mirrors.has(trip.id)) return;
   const m: Mirror = { chain: Promise.resolve() };
@@ -91,7 +92,45 @@ export function mirrorCreateAndAssign(
         });
       }
     })
-    .catch((e) => warn('criar viagem', e));
+    .catch((e) => {
+      warn('criar viagem', e);
+      onAssignFailed?.(trip.id, e instanceof Error ? e.message : 'Sem motoristas disponiveis.');
+    });
+}
+
+/** Reserva: cria a viagem no servidor com a hora marcada e NAO pede motorista (so perto da hora). */
+export function mirrorCreateScheduled(trip: TripRequest): void {
+  if (mirrors.has(trip.id) || !trip.scheduledFor) return;
+  const m: Mirror = { chain: Promise.resolve() };
+  mirrors.set(trip.id, m);
+  m.chain = m.chain
+    .then(async () => {
+      const created = await tripsApi.create({
+        origin: {
+          label: trip.origin.label,
+          address: trip.origin.address,
+          latitude: trip.origin.coordinates.latitude,
+          longitude: trip.origin.coordinates.longitude,
+        },
+        destination: {
+          label: trip.destination.label,
+          address: trip.destination.address,
+          latitude: trip.destination.coordinates.latitude,
+          longitude: trip.destination.coordinates.longitude,
+        },
+        categoryId: trip.categoryId,
+        paymentMethodType: trip.paymentMethodType,
+        cashNoteKz: trip.cashNoteKz,
+        scheduledFor: trip.scheduledFor,
+      });
+      m.remoteId = created.id;
+    })
+    .catch((e) => warn('criar reserva', e));
+}
+
+/** Id da viagem no servidor (existe depois de a viagem ser criada la). */
+export function mirrorRemoteId(localId: string): string | undefined {
+  return mirrors.get(localId)?.remoteId;
 }
 
 export function mirrorStart(localId: string): void {

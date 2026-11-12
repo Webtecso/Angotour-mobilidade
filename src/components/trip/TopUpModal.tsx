@@ -1,7 +1,8 @@
 ﻿import React, { useState } from 'react';
 import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { startTopUp, confirmTopUp } from '../../services/walletStore';
+import { TextInput, Alert } from 'react-native';
+import { walletRemote } from '../../services/backendApi';
 import { colors, radius, spacing, typography } from '../../constants/theme';
 
 interface TopUpModalProps {
@@ -10,30 +11,50 @@ interface TopUpModalProps {
   onConfirmed: () => void;
 }
 
-const AMOUNTS_KZ = [2000, 5000, 10000, 20000, 50000];
-
 export default function TopUpModal({ visible, onClose, onConfirmed }: TopUpModalProps) {
   const [amount, setAmount] = useState<number | null>(null);
+  const [custom, setCustom] = useState('');
+  const [topUpId, setTopUpId] = useState<string | null>(null);
   const [reference, setReference] = useState<string | null>(null);
-  const [status, setStatus] = useState<'idle' | 'processing' | 'confirmed'>('idle');
+  const [status, setStatus] = useState<'idle' | 'processing' | 'pending' | 'confirmed'>('idle');
 
   const handleClose = () => {
     setAmount(null);
+    setCustom('');
+    setTopUpId(null);
     setReference(null);
     setStatus('idle');
     onClose();
   };
 
+  const chosen = custom.trim() ? Number(custom) : 0;
+  const valid = chosen >= 500 && chosen <= 500000;
+
   const handleStart = async () => {
-    if (!amount) return;
+    if (!valid) return;
+    setAmount(chosen);
     setStatus('processing');
-    const topUp = await startTopUp(amount);
-    setReference(topUp.reference);
-    setTimeout(async () => {
-      await confirmTopUp(topUp.id);
+    try {
+      const topUp = await walletRemote.startTopUp(chosen);
+      setReference(topUp.reference);
+      setTopUpId(topUp.id);
+      setStatus('pending');
+      onConfirmed();
+    } catch (e) {
+      setStatus('idle');
+      Alert.alert('Nao foi possivel carregar', (e as Error).message);
+    }
+  };
+
+  const handleDevConfirm = async () => {
+    if (!topUpId) return;
+    try {
+      await walletRemote.devConfirmTopUp(topUpId);
       setStatus('confirmed');
       onConfirmed();
-    }, 1800);
+    } catch (e) {
+      Alert.alert('Nao foi possivel confirmar', (e as Error).message);
+    }
   };
 
   return (
@@ -47,25 +68,19 @@ export default function TopUpModal({ visible, onClose, onConfirmed }: TopUpModal
         {status === 'idle' ? (
           <>
             <Text style={styles.sectionLabel}>Quanto queres carregar?</Text>
-            <View style={styles.amountsGrid}>
-              {AMOUNTS_KZ.map((value) => {
-                const isSelected = amount === value;
-                return (
-                  <TouchableOpacity
-                    key={value}
-                    style={[styles.amountCard, isSelected && styles.amountCardSelected]}
-                    activeOpacity={0.8}
-                    onPress={() => setAmount(value)}
-                  >
-                    <Text style={[styles.amountText, isSelected && styles.amountTextSelected]}>{value.toLocaleString('pt-AO')} Kz</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            <TextInput
+              style={styles.input}
+              value={custom}
+              onChangeText={(t) => setCustom(t.replace(/\D/g, ''))}
+              placeholder="Valor (500 a 500.000 Kz)"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="number-pad"
+              maxLength={6}
+            />
             <TouchableOpacity
-              style={[styles.confirmButton, !amount && styles.confirmButtonDisabled]}
+              style={[styles.confirmButton, !valid && styles.confirmButtonDisabled]}
               activeOpacity={0.85}
-              disabled={!amount}
+              disabled={!valid}
               onPress={handleStart}
             >
               <Text style={styles.confirmButtonText}>Gerar referencia Multicaixa</Text>
@@ -76,7 +91,7 @@ export default function TopUpModal({ visible, onClose, onConfirmed }: TopUpModal
             {status === 'processing' ? (
               <>
                 <ActivityIndicator size="large" color={colors.primary} />
-                <Text style={styles.statusTitle}>A processar pagamento...</Text>
+                <Text style={styles.statusTitle}>A criar referencia...</Text>
               </>
             ) : (
               <>
@@ -92,6 +107,19 @@ export default function TopUpModal({ visible, onClose, onConfirmed }: TopUpModal
               <Text style={styles.referenceLabel}>Valor</Text>
               <Text style={styles.referenceValue}>{amount?.toLocaleString('pt-AO')} Kz</Text>
             </View>
+            {status === 'pending' ? (
+              <>
+                <Text style={styles.statusTitle}>Paga a referencia para concluir</Text>
+                {__DEV__ ? (
+                  <TouchableOpacity style={styles.confirmButton} activeOpacity={0.85} onPress={handleDevConfirm}>
+                    <Text style={styles.confirmButtonText}>Confirmar pagamento (dev)</Text>
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity style={{ marginTop: spacing.md }} onPress={handleClose}>
+                  <Text style={styles.referenceLabel}>Fechar. O saldo atualiza quando o pagamento for confirmado.</Text>
+                </TouchableOpacity>
+              </>
+            ) : null}
             {status === 'confirmed' ? (
               <TouchableOpacity style={styles.confirmButton} activeOpacity={0.85} onPress={handleClose}>
                 <Text style={styles.confirmButtonText}>Concluir</Text>
@@ -109,6 +137,7 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md },
   title: { ...typography.h3, color: colors.textPrimary },
   sectionLabel: { ...typography.captionMedium, color: colors.textSecondary, marginBottom: spacing.sm },
+  input: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, ...typography.body, color: colors.textPrimary, marginBottom: spacing.lg },
   amountsGrid: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: spacing.lg },
   amountCard: { width: '31%', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center', marginRight: '3.5%', marginBottom: spacing.sm },
   amountCardSelected: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
