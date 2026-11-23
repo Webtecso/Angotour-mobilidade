@@ -8,11 +8,15 @@ import Button from '../../components/common/Button';
 import LeafletMapView from '../../components/trip/RideMapView';
 import { useTrip } from '../../contexts/TripContext';
 import { haversineDistanceKm } from '../../utils/geo';
+import { reverseLabel } from '../../services/backendApi';
 import { Coordinates } from '../../types';
 import { HomeStackParamList } from '../../navigation/types';
 import { colors, radius, spacing, typography } from '../../constants/theme';
 
 type Props = NativeStackScreenProps<HomeStackParamList, 'PickOnMap'>;
+
+let reqSeq = 0;
+let moveTimer: ReturnType<typeof setTimeout> | null = null;
 
 export default function PickOnMapScreen({ navigation, route }: Props) {
   const target = route.params?.target ?? 'destination';
@@ -27,21 +31,25 @@ export default function PickOnMapScreen({ navigation, route }: Props) {
   const [isLocating, setIsLocating] = useState(false);
 
   const resolveAddress = async (coords: Coordinates) => {
+    const id = ++reqSeq;
     setIsResolving(true);
-    try {
-      const [result] = await Location.reverseGeocodeAsync(coords);
-      const line = result ? [result.street, result.district ?? result.city].filter(Boolean).join(', ') : null;
-      setAddress(line || 'Local sem nome conhecido');
-    } catch {
-      setAddress('Nao foi possivel identificar este local');
-    } finally {
-      setIsResolving(false);
+    let line: string | null = null;
+    try { line = await reverseLabel(coords); } catch { line = null; }
+    if (!line) {
+      try {
+        const [result] = await Location.reverseGeocodeAsync(coords);
+        line = result ? [result.street, result.district ?? result.city].filter(Boolean).join(', ') : null;
+      } catch { line = null; }
     }
+    if (id !== reqSeq) return;
+    setAddress(line || 'Local sem nome conhecido');
+    setIsResolving(false);
   };
 
   const handleCenterChange = (coords: Coordinates) => {
     setCenter(coords);
-    resolveAddress(coords);
+    if (moveTimer) clearTimeout(moveTimer);
+    moveTimer = setTimeout(() => { void resolveAddress(coords); }, 500);
   };
 
   const handleUseCurrentLocation = async () => {

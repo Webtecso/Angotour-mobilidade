@@ -17,3 +17,5 @@ tmp-*.sql
 audit-next.txt
 *.tsbuildinfo
 .expo/
+*.removed
+audit-*.txt

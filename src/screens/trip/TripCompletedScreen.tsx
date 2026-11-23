@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,7 +6,7 @@ import ScreenContainer from '../../components/common/ScreenContainer';
 import Button from '../../components/common/Button';
 import RewardsModal from '../../components/trip/RewardsModal';
 import { useTrip } from '../../contexts/TripContext';
-import { awardPointsForTrip } from '../../services/pointsStore';
+import { useAuth } from '../../contexts/AuthContext';
 import { setFavoriteDriver } from '../../services/favoriteDriverStore';
 import { ratingsRemote } from '../../services/extrasApi';
 import { syncQuiet } from '../../services/remoteSync';
@@ -27,39 +27,38 @@ export default function TripCompletedScreen({ navigation }: Props) {
   const { activeTrip, clearActiveTrip } = useTrip();
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
-  const [pointsEarned, setPointsEarned] = useState<number | null>(null);
+  const { user, refreshPoints } = useAuth();
+  // Pontos ganhos = saldo do servidor depois da viagem menos o saldo que a app tinha ao abrir este ecra.
+  const pointsBaseline = useRef<number | null>(null);
+  if (pointsBaseline.current === null && user) pointsBaseline.current = user.angoPoints;
+  const pointsEarned = pointsBaseline.current !== null && user ? user.angoPoints - pointsBaseline.current : null;
   const [rewardsVisible, setRewardsVisible] = useState(false);
   const [favoriteSaved, setFavoriteSaved] = useState(false);
-  // Estado real do pagamento (seccao 29 do documento): nunca assumimos
-  // confirmacao instantanea - simulamos "a processar" antes de confirmar.
+  // So afirmamos o que o servidor reportou: sem esse dado, a linha do pagamento nao aparece.
   const [paymentState, setPaymentState] = useState<PaymentState>('processing');
+  const [paymentHidden, setPaymentHidden] = useState(false);
 
   useEffect(() => {
     if (!activeTrip) return;
     let alive = true;
-    awardPointsForTrip(activeTrip.id, activeTrip.priceKz).then((points) => {
-      if (alive) setPointsEarned(points);
-    });
-    // Sem ligacao ao servidor (viagem so local): mantem a simulacao.
+    void refreshPoints(); // os pontos vivem no servidor e sao atribuidos ao concluir a viagem
+    // Viagem que nunca chegou ao servidor: nao ha nada para confirmar.
     if (!activeTrip.remoteId) {
-      const timer = setTimeout(() => {
-        if (alive) setPaymentState('confirmed');
-      }, 1800);
+      setPaymentHidden(true);
       return () => {
         alive = false;
-        clearTimeout(timer);
       };
     }
-    // Com servidor: pagamento por carteira e debitado automaticamente (o saldo
-    // ja desconta a viagem concluida). Se nao houver saldo, o servidor devolve
-    // paymentConfirmed=false e mostramos a falha em vez de inventar sucesso.
+    // So mostramos o estado do pagamento se o servidor o reportar (paymentConfirmed).
     tripsApi
       .get(activeTrip.remoteId)
       .then((t: any) => {
-        if (alive) setPaymentState(t.paymentConfirmed === false ? 'failed' : 'confirmed');
+        if (!alive) return;
+        if (typeof t.paymentConfirmed === 'boolean') setPaymentState(t.paymentConfirmed ? 'confirmed' : 'failed');
+        else setPaymentHidden(true);
       })
       .catch(() => {
-        if (alive) setPaymentState('failed');
+        if (alive) setPaymentHidden(true);
       });
     return () => {
       alive = false;
@@ -117,6 +116,7 @@ export default function TripCompletedScreen({ navigation }: Props) {
           <Text style={styles.protectedText}>Preco protegido - sem alteracoes desde a confirmacao</Text>
         </View>
 
+        {paymentHidden ? null : (
         <View style={styles.paymentRow}>
           {paymentState === 'processing' ? (
             <ActivityIndicator size="small" color={colors.textSecondary} />
@@ -131,6 +131,7 @@ export default function TripCompletedScreen({ navigation }: Props) {
             {PAYMENT_LABELS[paymentState]}
           </Text>
         </View>
+        )}
 
         {hasCleanRoute ? (
           <View style={styles.cleanRouteRow}>

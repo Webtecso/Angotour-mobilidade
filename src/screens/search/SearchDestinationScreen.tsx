@@ -1,7 +1,6 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenContainer from '../../components/common/ScreenContainer';
 import Button from '../../components/common/Button';
@@ -9,7 +8,8 @@ import Input from '../../components/common/Input';
 import LeafletMapView from '../../components/trip/RideMapView';
 import { useTrip } from '../../contexts/TripContext';
 import { recentPlaces } from '../../services/mockData';
-import { useNearbyDrivers } from '../../hooks/useBackendData';
+import { useNearbyDrivers, useRecentPlaces } from '../../hooks/useBackendData';
+import { searchPlaces } from '../../services/backendApi';
 import { getFavoritePlaces, toggleFavoritePlace } from '../../services/favoritePlacesStore';
 import { haversineDistanceKm } from '../../utils/geo';
 import { Coordinates, SavedPlace } from '../../types';
@@ -42,6 +42,7 @@ export default function SearchDestinationScreen({ navigation }: Props) {
   const [reference, setReference] = useState('');
   const [referenceVisible, setReferenceVisible] = useState(false);
   const [favorites, setFavorites] = useState<SavedPlace[]>([]);
+  const [remote, setRemote] = useState<SavedPlace[]>([]);
 
   const stops = tripDraft.stops;
 
@@ -51,9 +52,17 @@ export default function SearchDestinationScreen({ navigation }: Props) {
 
   const favoriteIds = new Set(favorites.map((f) => f.id));
 
+  // Recentes reais (viagens concluidas). Sem historico, mostra a lista curada de Luanda como sugestoes.
+  const recents = useRecentPlaces();
+  const knownPlaces = [...recents, ...recentPlaces.filter((p) => !recents.some((r) => r.label.toLowerCase() === p.label.toLowerCase()))];
+  const suggestedPlaces = recents.length > 0 ? recents : recentPlaces;
+
   const displayedPlaces = query
-    ? recentPlaces.filter((place) => place.label.toLowerCase().includes(query.trim().toLowerCase()))
-    : [...favorites, ...recentPlaces.filter((p) => !favoriteIds.has(p.id))];
+    ? [
+        ...knownPlaces.filter((place) => place.label.toLowerCase().includes(query.trim().toLowerCase())),
+        ...remote.filter((r) => !knownPlaces.some((k) => k.label.toLowerCase() === r.label.toLowerCase())),
+      ]
+    : [...favorites, ...suggestedPlaces.filter((p) => !favoriteIds.has(p.id))];
 
   const decorativeCars = buildDecorativeCars(tripDraft.origin.coordinates);
   const nearbyCars = useNearbyDrivers(tripDraft.origin.coordinates);
@@ -82,41 +91,30 @@ export default function SearchDestinationScreen({ navigation }: Props) {
     setFavorites(updated);
   };
 
-  const handleSubmitSearch = async () => {
+  // Pesquisa enquanto escreve (com pausa). Nunca escolhe sozinha: o passageiro toca num resultado da lista.
+  useEffect(() => {
     const term = query.trim();
-    if (!term) return;
-
-    const localMatch = recentPlaces.find((p) => p.label.toLowerCase() === term.toLowerCase());
-    if (localMatch) {
-      handleSelectFromList(localMatch);
+    if (term.length < 3) {
+      setRemote([]);
+      setIsSearching(false);
       return;
     }
+    let alive = true;
+    const t = setTimeout(() => {
+      setIsSearching(true);
+      searchPlaces(term)
+        .then((r) => { if (alive) setRemote(r); })
+        .catch(() => { if (alive) setRemote([]); })
+        .finally(() => { if (alive) setIsSearching(false); });
+    }, 600);
+    return () => { alive = false; clearTimeout(t); };
+  }, [query]);
 
-    setIsSearching(true);
-    try {
-      const searchTerm = /angola/i.test(term) ? term : `${term}, Angola`;
-      const results = await Location.geocodeAsync(searchTerm);
-      // Bounding box generoso de Angola (inclui Cabinda) - descarta resultados
-      // fora do pais, mesmo que o geocoder ignore o ", Angola" da query.
-      const withinAngola = results.filter(
-        (r) => r.latitude >= -18.5 && r.latitude <= -4.2 && r.longitude >= 11.4 && r.longitude <= 24.1
-      );
-      const best = withinAngola[0] ?? results[0];
-      if (best) {
-        const { latitude, longitude } = best;
-        handleSelectFromList({
-          id: 'search-' + Date.now(),
-          kind: 'custom',
-          label: term,
-          address: term,
-          coordinates: { latitude, longitude },
-        });
-      }
-    } catch {
-      // geocodificacao falhou (sem rede ou termo nao encontrado) - silenciosamente ignora
-    } finally {
-      setIsSearching(false);
-    }
+  const handleSubmitSearch = () => {
+    const term = query.trim();
+    if (!term) return;
+    const localMatch = knownPlaces.find((p) => p.label.toLowerCase() === term.toLowerCase());
+    if (localMatch) handleSelectFromList(localMatch);
   };
 
   const handleConfirm = () => {
@@ -159,7 +157,7 @@ export default function SearchDestinationScreen({ navigation }: Props) {
     ? 'Escolhe o local da paragem'
     : query
     ? 'Resultados'
-    : 'Favoritos e locais recentes';
+    : recents.length > 0 ? 'Favoritos e locais recentes' : 'Favoritos e sugestoes';
 
   return (
     <ScreenContainer style={styles.container} edges={['left', 'right']}>
@@ -219,6 +217,11 @@ export default function SearchDestinationScreen({ navigation }: Props) {
                 onChangeText={(t) => { setQuery(t); if (pickerMode === 'destination') setSelectedPlace(null); }}
                 onSubmitEditing={handleSubmitSearch}
                 returnKeyType="search"
+                autoCorrect={false}
+                spellCheck={false}
+                autoComplete="off"
+                textContentType="none"
+                autoCapitalize="words"
               />
             </View>
           </View>

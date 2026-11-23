@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -49,23 +49,20 @@ export default function RequestingDriverScreen({ navigation }: Props) {
   // observa o activeTrip e so avanca quando o contexto estiver mesmo pronto.
   useEffect(() => {
     let cancelled = false;
-    let favoriteDriverId: string | undefined;
-
-    getFavoriteDriver().then((fav) => {
-      if (!cancelled) favoriteDriverId = fav?.driverId;
-    });
+    getFavoriteDriver()
+      .catch(() => null)
+      .then((fav) => {
+        if (cancelled) return;
+        assignDriver(womenModeEnabled, fav?.driverId);
+        setAssignTriggered(true);
+      });
 
     const timers = STEPS.map((_, i) => setTimeout(() => setStepIndex(i + 1), (i + 1) * 700));
-    const finalTimer = setTimeout(() => {
-      if (cancelled) return;
-      assignDriver(womenModeEnabled, favoriteDriverId);
-      setAssignTriggered(true);
-    }, STEPS.length * 700 + 400);
+
 
     return () => {
       cancelled = true;
       timers.forEach(clearTimeout);
-      clearTimeout(finalTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

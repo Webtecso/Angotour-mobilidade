@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -39,11 +39,47 @@ const STEP_INFO: Record<Exclude<Step, 'intro' | 'processing' | 'done'>, { icon: 
  * enviados para o servidor. NUNCA se auto-aprova - fica "pending" ate um revisor confirmar
  * no Admin. Ao concluir, ativa o Selo "Utilizador Verificado AngoTour" (AuthContext).
  */
+const DOC_NAMES: Record<string, string> = { bi_front: 'BI (frente)', bi_back: 'BI (verso)', selfie: 'Selfie' };
+const DOC_ORDER: Array<'bi_front' | 'bi_back' | 'selfie'> = ['bi_front', 'bi_back', 'selfie'];
+
 export default function IdentityVerificationModal({ visible, onClose }: IdentityVerificationModalProps) {
-  const { user, submitIdentityVerification } = useAuth();
+  const { user, submitIdentityVerification, refreshProfile } = useAuth();
   const [step, setStep] = useState<Step>('intro');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+  const [docs, setDocs] = useState<Array<{ type: string; status: string; rejectionReason: string | null }>>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  // Ao abrir, le o estado real no servidor: salta o que ja foi aprovado e mostra o que foi rejeitado.
+  useEffect(() => {
+    if (!visible) return;
+    setLoaded(false);
+    void refreshProfile();
+    identityDocumentsApi
+      .list()
+      .then((d) => setDocs(d as any))
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  const todo = DOC_ORDER.filter((t) => {
+    const d = docs.find((x) => x.type === t);
+    return !loaded || !d || d.status === 'not_submitted' || d.status === 'rejected';
+  });
+  const rejectedDocs = docs.filter((d) => d.status === 'rejected');
+  const nextAfter = (type: (typeof DOC_ORDER)[number]): Step => {
+    const i = todo.indexOf(type);
+    return i >= 0 && i < todo.length - 1 ? todo[i + 1] : 'processing';
+  };
+  const startFlow = () => {
+    setError('');
+    if (todo.length === 0) {
+      void handleFinalSubmit();
+      return;
+    }
+    setStep(todo[0]);
+  };
 
   const handleClose = () => {
     setStep('intro');
@@ -85,10 +121,12 @@ export default function IdentityVerificationModal({ visible, onClose }: Identity
     setStep('processing');
     try {
       await submitIdentityVerification();
-    } catch {
-      // submitIdentityVerification ja cai para uma simulacao local em caso de erro de rede
+      setStep('done');
+    } catch (e) {
+      // Sem confirmacao do servidor nao ha "em analise": volta ao passo da selfie com o motivo.
+      setError((e as Error).message || 'Nao foi possivel submeter. Tenta outra vez.');
+      setStep('intro');
     }
-    setStep('done');
   };
 
   return (
@@ -110,8 +148,18 @@ export default function IdentityVerificationModal({ visible, onClose }: Identity
               Isto aumenta a confianca dos motoristas e reduz fraudes. As fotos sao revistas por uma pessoa da
               equipa AngoTour antes de o selo ficar ativo.
             </Text>
-            <TouchableOpacity style={styles.primaryButton} activeOpacity={0.85} onPress={() => setStep('bi_front')}>
-              <Text style={styles.primaryButtonText}>Comecar verificacao</Text>
+            {rejectedDocs.length > 0 ? (
+              <View style={{ marginBottom: spacing.md, width: '100%' }}>
+                {rejectedDocs.map((d) => (
+                  <Text key={d.type} style={styles.errorText}>
+                    {(DOC_NAMES[d.type] ?? d.type) + ' rejeitado: ' + (d.rejectionReason ?? 'envia outra foto.')}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            <TouchableOpacity style={styles.primaryButton} activeOpacity={0.85} onPress={startFlow}>
+              <Text style={styles.primaryButtonText}>{todo.length === 0 ? 'Submeter para analise' : rejectedDocs.length > 0 ? 'Reenviar documentos' : 'Comecar verificacao'}</Text>
             </TouchableOpacity>
           </View>
         ) : null}
@@ -129,7 +177,7 @@ export default function IdentityVerificationModal({ visible, onClose }: Identity
               activeOpacity={0.8}
               disabled={uploading}
               onPress={() =>
-                captureAndUpload(step, step === 'bi_front' ? 'bi_back' : step === 'bi_back' ? 'selfie' : 'processing')
+                captureAndUpload(step, nextAfter(step))
               }
             >
               {uploading ? (

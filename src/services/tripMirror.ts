@@ -1,4 +1,4 @@
-﻿import { TripRequest } from '../types';
+import { TripRequest } from '../types';
 import { tripsApi, RemoteDriver, RemoteVehicle } from './api';
 
 /**
@@ -46,7 +46,8 @@ export function mirrorCreateAndAssign(
   trip: TripRequest,
   preferFemale: boolean,
   onRealDriverAssigned?: (localTripId: string, assignment: RealDriverAssignment) => void,
-  onAssignFailed?: (localTripId: string, message: string) => void
+  onAssignFailed?: (localTripId: string, message: string) => void,
+  preferDriverId?: string
 ): void {
   if (mirrors.has(trip.id)) return;
   const m: Mirror = { chain: Promise.resolve() };
@@ -79,7 +80,7 @@ export function mirrorCreateAndAssign(
       const created = await tripsApi.create(body);
       m.remoteId = created.id;
 
-      const assignOpts = { preferFemale, preferDriverId: undefined as string | undefined };
+      const assignOpts = { preferFemale, preferDriverId };
       const assigned = await tripsApi.assignDriver(created.id, assignOpts);
 
       if (assigned.driver && onRealDriverAssigned) {

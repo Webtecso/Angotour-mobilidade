@@ -1,6 +1,6 @@
-﻿import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { ComfortPreferenceId, PaymentMethodType, PaymentState, SavedPlace, TripRequest, VehicleCategoryId } from '../types';
-import { computeChangeKz, defaultOrigin, estimateTrip, generateBoardingCode, mockDrivers } from '../services/mockData';
+import { computeChangeKz, defaultOrigin, estimateTrip } from '../services/mockData';
 import { CancellationRisk, recordCancellation } from '../services/cancellationStore';
 import { recordTripEvent } from '../services/tripEventStore';
 import { mirrorCancel, mirrorComplete, mirrorCreateAndAssign, mirrorStart, RealDriverAssignment, mirrorCreateScheduled, mirrorRemoteId } from '../services/tripMirror';
@@ -173,34 +173,29 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       changeKz,
       status,
       driver: status === 'driver_assigned' ? driver : undefined,
-      boardingCode: status === 'driver_assigned' ? generateBoardingCode() : undefined,
+      boardingCode: undefined,
     };
   }
 
   /**
-   * Quando o backend confirma qual motorista real foi atribuido, corrige o
-   * motorista mostrado ao passageiro: identidade (nome, telefone, avaliacao)
-   * e localizacao vem do servidor; os detalhes cosmeticos (modelo, matricula,
-   * cor, pontuacao do veiculo, genero) vem do registo local correspondente
-   * ao mesmo telefone, quando existir (os motoristas demo do backend usam
-   * os mesmos numeros dos 3 motoristas mock). So aplica se a viagem ativa
-   * ainda for a mesma (nao foi cancelada/substituida entretanto).
+   * Quando o backend confirma qual motorista real foi atribuido, corrige o motorista
+   * mostrado ao passageiro com os dados do servidor (identidade, genero, localizacao e
+   * veiculo aprovado). So aplica se a viagem ativa ainda for a mesma.
    */
   const handleRealDriverAssigned = (localTripId: string, assignment: RealDriverAssignment) => {
     setActiveTrip((trip) => {
       if (!trip || trip.id !== localTripId) return trip;
-      const cosmetic = mockDrivers.find((d) => d.phone === assignment.driver.phone);
       const realDriver = {
         id: assignment.driver.id,
         fullName: assignment.driver.fullName,
         phone: assignment.driver.phone,
         rating: assignment.driver.rating,
-        vehicleModel: assignment.vehicle?.model ?? cosmetic?.vehicleModel ?? trip.driver?.vehicleModel ?? 'Veiculo AngoTour',
-        vehiclePlate: assignment.vehicle?.plate ?? cosmetic?.vehiclePlate ?? trip.driver?.vehiclePlate ?? '',
-        vehicleColor: assignment.vehicle?.color ?? cosmetic?.vehicleColor ?? trip.driver?.vehicleColor ?? '',
-        vehicleScore: cosmetic?.vehicleScore ?? trip.driver?.vehicleScore ?? { safety: 5, comfort: 4, cleanliness: 5 },
-        gender: cosmetic?.gender ?? trip.driver?.gender ?? 'male',
-        coordinates: assignment.driverLocation ?? cosmetic?.coordinates ?? trip.driver?.coordinates ?? trip.origin.coordinates,
+        vehicleModel: assignment.vehicle?.model ?? trip.driver?.vehicleModel ?? 'Veiculo AngoTour',
+        vehiclePlate: assignment.vehicle?.plate ?? trip.driver?.vehiclePlate ?? '',
+        vehicleColor: assignment.vehicle?.color ?? trip.driver?.vehicleColor ?? '',
+        vehicleScore: trip.driver?.vehicleScore,
+        gender: (assignment.driver.gender === 'female' ? 'female' : 'male') as 'female' | 'male',
+        coordinates: assignment.driverLocation ?? trip.driver?.coordinates ?? trip.origin.coordinates,
       };
       // O codigo gerado localmente (generateBoardingCode) e so um placeholder
       // visual ate aqui. Assim que o servidor confirma a atribuicao real,
@@ -232,7 +227,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       const trip = buildTripFromDraft(draft, 'searching_driver');
       if (trip) {
         setActiveTrip(trip);
-        mirrorCreateAndAssign(trip, preferFemale, handleRealDriverAssigned, onAssignFailed);
+        mirrorCreateAndAssign(trip, preferFemale, handleRealDriverAssigned, onAssignFailed, preferredDriverId);
         recordTripEvent(trip.id, 'trip_created', { distanceKm: trip.distanceKm, priceKz: trip.priceKz }).catch(() => {});
         recordTripEvent(trip.id, 'driver_assigned', { driverId: trip.driver?.id ?? '', womenMode: preferFemale ? 1 : 0 }).catch(() => {});
       }

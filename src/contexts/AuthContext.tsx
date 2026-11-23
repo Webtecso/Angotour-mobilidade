@@ -1,8 +1,11 @@
-﻿import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { fetchMyPoints } from '../services/backendApi';
+import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User } from '../types';
 import { authApi, setToken, getToken } from '../services/api';
-import { profileRemote } from '../services/backendApi';
+import { profileRemote, pushRemote } from '../services/backendApi';
+import { registerForPushNotificationsAsync } from '../services/pushNotifications';
 
 const STORAGE_KEY = '@angotour/user';
 
@@ -18,6 +21,8 @@ interface AuthContextValue {
   addAngoPoints: (points: number) => void;
   spendAngoPoints: (points: number) => Promise<boolean>;
   updateProfile: (data: Partial<User>) => void;
+  refreshPoints: () => Promise<boolean>;
+  refreshProfile: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -43,6 +48,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    registerForPushNotificationsAsync()
+      .then((token) => { if (token) pushRemote.registerToken(token).catch(() => {}); })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const persistUser = (updated: User) => {
     userRef.current = updated;
@@ -115,25 +128,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   /**
-   * Verificacao de identidade (seccao 8-9 do documento de pesquisa): envia o
-   * BI + selfie ao servidor para analise. NUNCA se auto-aprova aqui - o
-   * servidor grava verificationStatus: 'pending' e so um revisor no Admin
-   * (Document Center, ainda por construir) aprova isVerified: true. Sem
-   * rede, cai para uma simulacao local igualmente "pending".
+   * Verificacao de identidade: o BI e a selfie ja foram enviados ao servidor pelo modal.
+   * Aqui so se pede a revisao. NUNCA se auto-aprova: o servidor grava 'pending' e so um
+   * revisor no painel aprova. Sem confirmacao do servidor, o erro sobe ate ao ecra.
    */
   const submitIdentityVerification = async (): Promise<void> => {
     const current = userRef.current;
     if (!current) return;
-    try {
-      const result = await profileRemote.verifyIdentity();
-      persistUser({ ...current, isVerified: result.isVerified, verificationStatus: result.verificationStatus as User['verificationStatus'] });
-    } catch {
-      await new Promise((resolve) => setTimeout(resolve, 1600));
-      persistUser({ ...current, verificationStatus: 'pending' });
-    }
+    // Sem confirmacao do servidor nao ha estado 'pending': o erro sobe ate ao ecra.
+    const result = await profileRemote.verifyIdentity();
+    persistUser({ ...current, isVerified: result.isVerified, verificationStatus: result.verificationStatus as User['verificationStatus'] });
   };
 
-  // AngoPoints: por agora guardados so no telemovel (o servidor ainda nao tem endpoint de pontos).
+  // AngoPoints: o servidor e a fonte da verdade (GET /profile/me); aqui fica so uma copia para mostrar.
   const addAngoPoints = (points: number) => {
     const current = userRef.current;
     if (!current || points <= 0) return;
@@ -153,10 +160,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     persistUser({ ...current, ...data });
   };
 
+  // Estado do perfil no servidor (selo de verificacao e pontos). Devolve false sem rede.
+  const refreshProfile = async (): Promise<boolean> => {
+    try {
+      const p = await profileRemote.me();
+      const current = userRef.current;
+      if (!current) return false;
+      const points = Number(p.angoPoints ?? 0);
+      const status = p.verificationStatus as User['verificationStatus'];
+      if (current.angoPoints !== points || current.isVerified !== !!p.isVerified || current.verificationStatus !== status) {
+        persistUser({ ...current, angoPoints: points, isVerified: !!p.isVerified, verificationStatus: status });
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  // Ao voltar a app ao primeiro plano, relê o perfil (o revisor pode ter aprovado entretanto).
+  useEffect(() => {
+    if (!user) return;
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') void refreshProfile();
+    });
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!user]);
+
+  // Os pontos vivem no servidor; devolve false se nao foi possivel ler (sem rede).
+  const refreshPoints = async (): Promise<boolean> => {
+    try {
+      const points = await fetchMyPoints();
+      const current = userRef.current;
+      if (current && current.angoPoints !== points) persistUser({ ...current, angoPoints: points });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    if (user) void refreshProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!user]);
+
   const value = useMemo(
     () => ({
       user, isLoading, pendingPhone, requestOtp, verifyOtp, completeRegistration, signOut,
-      submitIdentityVerification, addAngoPoints, spendAngoPoints, updateProfile,
+      submitIdentityVerification, addAngoPoints, spendAngoPoints, updateProfile, refreshPoints, refreshProfile,
     }),
     [user, isLoading, pendingPhone]
   );

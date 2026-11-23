@@ -1,29 +1,32 @@
-﻿import React from 'react';
+import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { getTrustProfileSummary } from '../../services/trustProfileStore';
+import { summarizeTrust } from '../../services/trustProfileStore';
+import { useTripHistory } from '../../hooks/useBackendData';
 import { colors, radius, spacing, typography } from '../../constants/theme';
 
 export default function TrustProfileCard() {
-  const summary = getTrustProfileSummary();
+  const { data, isRemote } = useTripHistory([]);
+  const summary = summarizeTrust(data);
+  const dash = '-';
 
   return (
     <View style={styles.card}>
       <Text style={styles.title}>O teu perfil de confianca</Text>
       <View style={styles.row}>
         <View style={styles.stat}>
-          <Text style={styles.statValue}>{summary.completedTrips}</Text>
+          <Text style={styles.statValue}>{isRemote ? summary.completedTrips : dash}</Text>
           <Text style={styles.statLabel}>Viagens concluidas</Text>
         </View>
         <View style={styles.stat}>
           <View style={styles.ratingRow}>
-            <Ionicons name="star" size={16} color={colors.amber} />
-            <Text style={styles.statValue}>{summary.averageRating.toFixed(1)}</Text>
+            <Ionicons name="navigate-outline" size={16} color={colors.primary} />
+            <Text style={styles.statValue}>{isRemote ? Math.round(summary.totalKm) + ' km' : dash}</Text>
           </View>
-          <Text style={styles.statLabel}>Avaliacao media</Text>
+          <Text style={styles.statLabel}>Percorridos</Text>
         </View>
         <View style={styles.stat}>
-          <Text style={styles.statValue}>{Math.round(summary.cancellationRate * 100)}%</Text>
+          <Text style={styles.statValue}>{isRemote ? Math.round(summary.cancellationRate * 100) + '%' : dash}</Text>
           <Text style={styles.statLabel}>Taxa de cancelamento</Text>
         </View>
       </View>

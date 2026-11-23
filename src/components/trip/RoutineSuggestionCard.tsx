@@ -2,7 +2,6 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getFavoritePlaces } from '../../services/favoritePlacesStore';
-import { quickShortcuts } from '../../services/mockData';
 import { SavedPlace } from '../../types';
 import { colors, radius, spacing, typography } from '../../constants/theme';
 
@@ -13,13 +12,13 @@ interface RoutineSuggestionCardProps {
 /**
  * Sugestao de rotina (seccao 4.3 do documento de produto). Por agora e uma
  * regra simples por hora do dia: de manha sugere o Trabalho, ao fim da tarde
- * sugere Casa. Usa os favoritos do utilizador; se nao existirem, usa os
- * atalhos de demonstracao. Quando houver historico real no backend, a regra
+ * sugere Casa. Usa so os favoritos do utilizador; sem favoritos, nao sugere.
+ * Quando houver historico real no backend, a regra
  * passa a basear-se nas viagens frequentes.
  */
 function pickSuggestion(hour: number, places: SavedPlace[]): { place: SavedPlace; timeText: string } | null {
   const find = (kind: 'home' | 'work') =>
-    places.find((p) => p.kind === kind) ?? quickShortcuts.find((s) => s.place?.kind === kind)?.place;
+    places.find((p) => p.kind === kind);
 
   if (hour >= 6 && hour < 10) {
     const place = find('work');
@@ -48,7 +47,7 @@ export default function RoutineSuggestionCard({ onPress }: RoutineSuggestionCard
         <Ionicons name="time-outline" size={20} color={colors.ink} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={styles.title}>Normalmente vais para {suggestion.place.label} {suggestion.timeText}</Text>
+        <Text style={styles.title}>Vais para {suggestion.place.label} {suggestion.timeText}?</Text>
         <Text style={styles.subtitle}>Toca para pedir agora</Text>
       </View>
       <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />

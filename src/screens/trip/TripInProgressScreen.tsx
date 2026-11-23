@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Image, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View, Share } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -111,14 +111,6 @@ export default function TripInProgressScreen({ navigation }: Props) {
     }
   };
 
-  const handlePrimaryAction = () => {
-    if (isArriving) {
-      beginRide();
-    } else {
-      completeTrip(actualDistanceKm ?? undefined);
-    }
-  };
-
   const handleShare = async () => {
     const plate = driver.vehiclePlate ? ' (' + driver.vehiclePlate + ')' : '';
     const message = 'Estou numa viagem AngoTour com ' + driver.fullName + plate + '. Destino: ' + activeTrip.destination.label + '.';
@@ -127,14 +119,6 @@ export default function TripInProgressScreen({ navigation }: Props) {
     } catch {
       Alert.alert('Partilha', 'Nao foi possivel abrir a partilha.');
     }
-  };
-
-  const handleSimulatePriceChange = () => {
-    const newProposed = Math.round((activeTrip.priceKz * 1.2) / 50) * 50;
-    setProposedPrice(newProposed);
-    recordTripEvent(activeTrip.id, 'price_change_proposed', { originalPriceKz: activeTrip.priceKz, proposedPriceKz: newProposed }).catch(() => {});
-    proposePriceChange(activeTrip.id, activeTrip.priceKz, newProposed, 'simulacao');
-    setPriceChangeVisible(true);
   };
 
   const handleKeepPrice = () => {
@@ -230,7 +214,7 @@ export default function TripInProgressScreen({ navigation }: Props) {
           ) : null}
         </View>
 
-        <VehicleScoreBadge score={driver.vehicleScore} />
+        {driver.vehicleScore ? <VehicleScoreBadge score={driver.vehicleScore} /> : null}
 
         <Text style={styles.quickMessagesTitle}>Mensagens rapidas</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickMessagesRow} contentContainerStyle={{ paddingRight: spacing.lg }}>

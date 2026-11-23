@@ -20,7 +20,7 @@ const CATEGORY_ICONS: Record<string, React.ComponentProps<typeof Ionicons>['name
 };
 
 export default function RewardsModal({ visible, onClose }: RewardsModalProps) {
-  const { user, spendAngoPoints } = useAuth();
+  const { user, spendAngoPoints, refreshPoints } = useAuth();
   const [catalog, setCatalog] = useState<RemoteRewardCatalogItem[]>([]);
   const [redeemed, setRedeemed] = useState<RedeemedReward[]>([]);
   const [lastVoucher, setLastVoucher] = useState<RedeemedReward | null>(null);
@@ -31,6 +31,7 @@ export default function RewardsModal({ visible, onClose }: RewardsModalProps) {
   useEffect(() => {
     if (!visible) return;
     setLastVoucher(null);
+    refreshPoints();
     getRedeemedRewards().then(setRedeemed);
     getRewardsCatalog().then(setCatalog);
   }, [visible]);
@@ -41,7 +42,7 @@ export default function RewardsModal({ visible, onClose }: RewardsModalProps) {
     try {
       // O servidor confirma e desconta os pontos. Sem a confirmacao dele nao ha voucher.
       const record = await saveRedeemedReward(reward);
-      await spendAngoPoints(reward.costPoints); // espelha localmente o desconto ja feito no servidor
+      if (!(await refreshPoints())) await spendAngoPoints(reward.costPoints); // servidor e a fonte; sem ligacao, espelha o desconto
       setRedeemed((prev) => [record, ...prev]);
       setLastVoucher(record);
     } catch (e) {

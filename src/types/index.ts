@@ -1,4 +1,4 @@
-﻿export type Coordinates = {
+export type Coordinates = {
   latitude: number;
   longitude: number;
 };
@@ -115,7 +115,7 @@ export interface Driver {
   vehiclePlate: string;
   vehicleColor: string;
   phone: string;
-  vehicleScore: VehicleScore;
+  vehicleScore?: VehicleScore;
   gender: 'male' | 'female';
 }
 

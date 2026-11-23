@@ -13,6 +13,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useLocation } from '../../contexts/LocationContext';
 import { useTrip } from '../../contexts/TripContext';
 import { haversineDistanceKm } from '../../utils/geo';
+import { fetchPopularDestinations, PopularDestination } from '../../services/backendApi';
 import { SavedPlace } from '../../types';
 import { HomeStackParamList } from '../../navigation/types';
 import { colors, radius, spacing, typography } from '../../constants/theme';
@@ -29,23 +30,27 @@ const VEHICLE_TYPES: { id: VehicleTypeId; label: string; icon: React.ComponentPr
 // Carrossel de destinos populares (secao "Destinos populares" da Home). Alguns
 // ja tem fotografia propria; os restantes usam gradiente ate termos a foto.
 // isSponsored fica pronto para futuras entradas de publicidade/patrocinio.
-interface PopularDestinationItem {
-  id: string;
-  title: string;
-  minutes: number;
-  icon: React.ComponentProps<typeof Ionicons>['name'];
-  image?: number;
-  isSponsored?: boolean;
-}
+type PopularDestinationItem = PopularDestination;
 
-const POPULAR_DESTINATIONS: PopularDestinationItem[] = [
-  { id: 'airport', title: 'Aeroporto', minutes: 12, icon: 'airplane-outline', image: require('../../../assets/images/dest-aeroporto.jpg') },
-  { id: 'talatona', title: 'Talatona', minutes: 8, icon: 'ribbon-outline', image: require('../../../assets/images/dest-talatona.jpg') },
-  { id: 'maianga', title: 'Maianga', minutes: 15, icon: 'location-outline', image: require('../../../assets/images/dest-maianga.jpg') },
-  { id: 'ilha', title: 'Ilha de Luanda', minutes: 18, icon: 'boat-outline' },
-  { id: 'kilamba', title: 'Kilamba', minutes: 22, icon: 'business-outline' },
-  { id: 'viana', title: 'Viana', minutes: 25, icon: 'location-outline' },
-];
+// Icone por tipo de local (o tipo vem do painel, pagina Destinos).
+const POPULAR_ICONS: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
+  airport: 'airplane-outline',
+  place: 'location-outline',
+  beach: 'water-outline',
+  landmark: 'ribbon-outline',
+  hotel: 'bed-outline',
+  restaurant: 'restaurant-outline',
+  culture: 'compass-outline',
+};
+
+// Fotos que ja existem na app; os restantes locais usam o gradiente da marca.
+function popularPhoto(title: string): number | undefined {
+  const t = title.toLowerCase();
+  if (t.includes('aeroporto')) return require('../../../assets/images/dest-aeroporto.jpg');
+  if (t.includes('talatona')) return require('../../../assets/images/dest-talatona.jpg');
+  if (t.includes('maianga')) return require('../../../assets/images/dest-maianga.jpg');
+  return undefined;
+}
 
 const AUTO_SCROLL_INTERVAL_MS = 3500;
 const CARD_WIDTH_WITH_GAP = 130 + spacing.sm;
@@ -65,6 +70,8 @@ export default function HomeScreen({ navigation }: Props) {
   const { currentPlace, isLoading: isLocating, permissionDenied, refresh: refreshLocation } = useLocation();
   const { setOrigin, setDestination, selectCategory, activeTrip } = useTrip();
 
+  const [popular, setPopular] = useState<PopularDestinationItem[]>([]);
+  const popularCountRef = useRef(0);
   const destinationsListRef = useRef<FlatList<PopularDestinationItem>>(null);
   const destinationIndexRef = useRef(0);
   const autoScrollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -79,7 +86,8 @@ export default function HomeScreen({ navigation }: Props) {
   const startAutoScroll = () => {
     stopAutoScroll();
     autoScrollTimerRef.current = setInterval(() => {
-      const next = (destinationIndexRef.current + 1) % POPULAR_DESTINATIONS.length;
+      if (popularCountRef.current < 2) return;
+      const next = (destinationIndexRef.current + 1) % popularCountRef.current;
       destinationIndexRef.current = next;
       destinationsListRef.current?.scrollToIndex({ index: next, animated: true });
     }, AUTO_SCROLL_INTERVAL_MS);
@@ -89,6 +97,20 @@ export default function HomeScreen({ navigation }: Props) {
     startAutoScroll();
     return stopAutoScroll;
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Destinos populares: a mesma fonte do painel (pagina Destinos).
+  useEffect(() => {
+    let alive = true;
+    fetchPopularDestinations()
+      .then((list) => {
+        if (!alive) return;
+        setPopular(list);
+        popularCountRef.current = list.length;
+        destinationIndexRef.current = 0;
+      })
+      .catch(() => {});
+    return () => { alive = false; };
   }, []);
 
   // reserva ativada: quando uma viagem ganha motorista (ou a app reabre com viagem em curso), abre o ecra da viagem
@@ -204,7 +226,7 @@ export default function HomeScreen({ navigation }: Props) {
 
         <FlatList
           ref={destinationsListRef}
-          data={POPULAR_DESTINATIONS}
+          data={popular}
           keyExtractor={(d) => d.id}
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -216,10 +238,10 @@ export default function HomeScreen({ navigation }: Props) {
           renderItem={({ item }) => (
             <PopularDestinationCard
               title={item.title}
-              minutes={item.minutes}
-              icon={item.icon}
-              image={item.image}
-              isSponsored={item.isSponsored}
+              distanceKm={haversineDistanceKm(currentPlace.coordinates, item.coordinates)}
+              icon={POPULAR_ICONS[item.kind] ?? 'location-outline'}
+              image={popularPhoto(item.title)}
+              isSponsored={false}
               onPress={handleSearchPress}
             />
           )}

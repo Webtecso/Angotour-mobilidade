@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { ImageBackground, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,7 +6,8 @@ import { colors, radius, spacing, typography } from '../../constants/theme';
 
 interface PopularDestinationCardProps {
   title: string;
-  minutes: number;
+  /** Distancia real desde a posicao do utilizador; sem ela, nao mostra nada. */
+  distanceKm?: number;
   icon: React.ComponentProps<typeof Ionicons>['name'];
   image?: number;
   // Espaco reservado para publicidade/patrocinios no carrossel da Home.
@@ -14,7 +15,7 @@ interface PopularDestinationCardProps {
   onPress: () => void;
 }
 
-export default function PopularDestinationCard({ title, minutes, icon, image, isSponsored, onPress }: PopularDestinationCardProps) {
+export default function PopularDestinationCard({ title, distanceKm, icon, image, isSponsored, onPress }: PopularDestinationCardProps) {
   const content = (
     <>
       <View style={styles.overlay} />
@@ -28,10 +29,12 @@ export default function PopularDestinationCard({ title, minutes, icon, image, is
           <Ionicons name={icon} size={13} color={colors.primary} />
           <Text style={styles.title} numberOfLines={1}>{title}</Text>
         </View>
-        <View style={styles.timeRow}>
-          <Ionicons name="time-outline" size={11} color="rgba(255,255,255,0.85)" />
-          <Text style={styles.timeText}>{minutes} min</Text>
-        </View>
+        {distanceKm != null && isFinite(distanceKm) ? (
+          <View style={styles.timeRow}>
+            <Ionicons name="navigate-outline" size={11} color="rgba(255,255,255,0.85)" />
+            <Text style={styles.timeText}>{distanceKm.toFixed(1)} km</Text>
+          </View>
+        ) : null}
       </View>
     </>
   );

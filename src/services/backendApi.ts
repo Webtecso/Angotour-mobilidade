@@ -1,6 +1,6 @@
-﻿import { API_BASE_URL } from '../constants/env';
+import { API_BASE_URL } from '../constants/env';
 import { getToken } from './api';
-import { Coordinates, VehicleCategoryId } from '../types';
+import { Coordinates, SavedPlace, VehicleCategoryId } from '../types';
 import { TripHistoryEntry } from './mockData';
 
 async function call<T>(path: string, method: 'GET' | 'POST' | 'PATCH' = 'GET', body?: unknown): Promise<T> {
@@ -33,6 +33,10 @@ export const usersRemote = {
 export const profileRemote = {
   me: () => call<RemoteProfile>('/profile/me'),
   verifyIdentity: () => call<RemoteProfile>('/profile/verify-identity', 'POST'),
+};
+
+export const pushRemote = {
+  registerToken: (pushToken: string) => call<void>('/profile/push-token', 'PATCH', { pushToken }),
 };
 
 // --- Carteira ---
@@ -101,4 +105,66 @@ function parseLocation(loc: unknown): Coordinates | null {
 export async function fetchNearbyDrivers(center: Coordinates, radiusKm = 5): Promise<Coordinates[]> {
   const rows = await call<any[]>(`/drivers/nearby?lat=${center.latitude}&lng=${center.longitude}&radiusKm=${radiusKm}`);
   return rows.map((r) => parseLocation(r.currentLocation)).filter((x): x is Coordinates => !!x);
+}
+
+/** Destinos das viagens concluidas do utilizador (sem repetidos, mais recentes primeiro). */
+export async function fetchRecentPlaces(): Promise<SavedPlace[]> {
+  const rows = await call<any[]>('/trips/me');
+  const seen = new Set<string>();
+  const out: SavedPlace[] = [];
+  const sorted = [...rows]
+    .filter((r) => r.status === 'completed' && r.destination?.latitude != null && r.destination?.longitude != null)
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  for (const r of sorted) {
+    const d = r.destination;
+    const label = String(d.label || d.address || '').trim();
+    if (!label || seen.has(label.toLowerCase())) continue;
+    seen.add(label.toLowerCase());
+    out.push({
+      id: 'recent-' + Number(d.latitude).toFixed(5) + '_' + Number(d.longitude).toFixed(5),
+      kind: 'custom',
+      label,
+      address: String(d.address || label),
+      coordinates: { latitude: Number(d.latitude), longitude: Number(d.longitude) },
+    });
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+/** Pontos AngoPoints do utilizador, lidos do servidor (fonte unica). */
+export async function fetchMyPoints(): Promise<number> {
+  const p = await call<RemoteProfile>('/profile/me');
+  return Number(p.angoPoints ?? 0);
+}
+
+/** Destinos populares editaveis no painel (tabela popular_destinations). */
+export interface PopularDestination {
+  id: string;
+  title: string;
+  address: string;
+  kind: string;
+  coordinates: Coordinates;
+}
+
+export async function fetchPopularDestinations(): Promise<PopularDestination[]> {
+  return call<PopularDestination[]>('/destinations');
+}
+
+/** Pesquisa de locais em Angola (destinos do painel + OpenStreetMap), via backend. */
+export async function searchPlaces(q: string): Promise<SavedPlace[]> {
+  const rows = await call<any[]>('/destinations/search?q=' + encodeURIComponent(q));
+  return rows.map((r) => ({
+    id: String(r.id),
+    kind: 'custom' as const,
+    label: String(r.title),
+    address: String(r.address),
+    coordinates: { latitude: Number(r.coordinates.latitude), longitude: Number(r.coordinates.longitude) },
+  }));
+}
+
+/** Nome do local (rua, bairro) a partir de coordenadas, via backend (OpenStreetMap). null se nao houver nome util. */
+export async function reverseLabel(c: Coordinates): Promise<string | null> {
+  const r = await call<{ label: string | null }>('/destinations/reverse?lat=' + c.latitude + '&lng=' + c.longitude);
+  return r?.label ?? null;
 }

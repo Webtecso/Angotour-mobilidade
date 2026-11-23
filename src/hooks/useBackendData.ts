@@ -1,8 +1,8 @@
-﻿import { useCallback, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { Coordinates } from '../types';
+import { Coordinates, SavedPlace } from '../types';
 import { TripHistoryEntry } from '../services/mockData';
-import { RemoteWallet, fetchNearbyDrivers, fetchTripHistory, walletRemote } from '../services/backendApi';
+import { RemoteWallet, fetchNearbyDrivers, fetchRecentPlaces, fetchTripHistory, walletRemote } from '../services/backendApi';
 
 /** Historico vindo do backend; enquanto nao chega (ou se falhar) usa o fallback local. */
 export function useTripHistory(fallback: TripHistoryEntry[]) {
@@ -62,4 +62,19 @@ export function useNearbyDrivers(center: Coordinates, radiusKm = 5) {
   );
 
   return cars;
+}
+
+/** Destinos recentes reais do utilizador (vazio se for novo ou sem ligacao). */
+export function useRecentPlaces() {
+  const [places, setPlaces] = useState<SavedPlace[]>([]);
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      fetchRecentPlaces()
+        .then((list) => { if (!cancelled) setPlaces(list); })
+        .catch(() => {});
+      return () => { cancelled = true; };
+    }, [])
+  );
+  return places;
 }

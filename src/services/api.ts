@@ -92,6 +92,7 @@ export interface CategoryEstimateResponse {
 }
 
 export interface RemoteDriver {
+  gender?: string;
   id: string;
   fullName: string;
   phone: string;
