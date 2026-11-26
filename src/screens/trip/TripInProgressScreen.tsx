@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Image, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View, Share } from 'react-native';
+import { Alert, Image, Linking, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, Share } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import ScreenContainer from '../../components/common/ScreenContainer';
@@ -9,6 +9,8 @@ import { useTrip } from '../../contexts/TripContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import LiveRouteMapView from '../../components/trip/LiveRideMapView';
 import SosModal from '../../components/trip/SosModal';
+import { createTripShare } from '../../services/backendApi';
+import { mirrorRemoteId } from '../../services/tripMirror';
 import CancelTripModal from '../../components/trip/CancelTripModal';
 import PriceChangeAlertModal from '../../components/trip/PriceChangeAlertModal';
 import VehicleScoreBadge from '../../components/trip/VehicleScoreBadge';
@@ -57,6 +59,9 @@ const PAYMENT_ICONS: Record<PaymentMethodType, React.ComponentProps<typeof Mater
   cash: 'cash',
 };
 
+// Viagens cujo link "Vai Comigo" ja foi enviado automaticamente (evita repetir).
+const autoShared = new Set<string>();
+
 export default function TripInProgressScreen({ navigation }: Props) {
   const { activeTrip, beginRide, completeTrip, cancelTrip, driverLocation } = useTrip();
   const { emergencyContact, autoShareTripEnabled, womenModeEnabled } = useSettings();
@@ -78,6 +83,27 @@ export default function TripInProgressScreen({ navigation }: Props) {
       navigation.popToTop();
     }
   }, [activeTrip, navigation]);
+
+  // Partilha automatica: quando a viagem comeca, abre a mensagem ao contacto de emergencia com o link.
+  useEffect(() => {
+    if (!activeTrip || !activeTrip.driver) return;
+    if (!autoShareTripEnabled || !emergencyContact) return;
+    if (activeTrip.status === 'driver_assigned') return;
+    if (autoShared.has(activeTrip.id)) return;
+    autoShared.add(activeTrip.id);
+    (async () => {
+      const remoteId = mirrorRemoteId(activeTrip.id);
+      if (!remoteId) return;
+      try {
+        const { url } = await createTripShare(remoteId);
+        const body = 'Estou numa viagem AngoTour. Acompanha em tempo real: ' + url;
+        const sep = Platform.OS === 'ios' ? '&' : '?';
+        await Linking.openURL('sms:' + emergencyContact.phone + sep + 'body=' + encodeURIComponent(body));
+      } catch {
+        // sem link: o passageiro pode partilhar manualmente
+      }
+    })();
+  }, [activeTrip?.id, activeTrip?.status, autoShareTripEnabled, emergencyContact]);
 
   // Viagem concluida (pelo motorista ou pelo servidor): segue para o ecra de conclusao.
   const isCompleted = activeTrip?.status === 'completed';
@@ -113,7 +139,14 @@ export default function TripInProgressScreen({ navigation }: Props) {
 
   const handleShare = async () => {
     const plate = driver.vehiclePlate ? ' (' + driver.vehiclePlate + ')' : '';
-    const message = 'Estou numa viagem AngoTour com ' + driver.fullName + plate + '. Destino: ' + activeTrip.destination.label + '.';
+    let link = '';
+    try {
+      const remoteId = mirrorRemoteId(activeTrip.id);
+      if (remoteId) link = (await createTripShare(remoteId)).url;
+    } catch {
+      link = '';
+    }
+    const message = 'Estou numa viagem AngoTour com ' + driver.fullName + plate + '. Destino: ' + activeTrip.destination.label + '.' + (link ? ' Acompanha em tempo real: ' + link : '');
     try {
       await Share.share({ message });
     } catch {

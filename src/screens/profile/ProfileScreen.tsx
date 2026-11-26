@@ -1,3 +1,4 @@
+import LegalModal from '../../components/common/LegalModal';
 ﻿import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Alert } from 'react-native';
 import type { ComponentRef } from 'react';
@@ -50,6 +51,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 export default function ProfileScreen() {
   const { user, signOut, updateProfile } = useAuth();
+  const [legalOpen, setLegalOpen] = useState(false);
   const navigation = useNavigation<any>();
   const [activeAnchor, setActiveAnchor] = useState(ANCHORS[0].id);
   const [incidentVisible, setIncidentVisible] = useState(false);
@@ -83,7 +85,7 @@ export default function ProfileScreen() {
         { text: 'Reportar um problema', onPress: () => setIncidentVisible(true) },
       ]);
     } else if (label === 'Termos e privacidade') {
-      Alert.alert('Termos e privacidade', 'Os Termos de Uso e a Politica de Privacidade serao publicados antes do lancamento oficial.');
+      setLegalOpen(true);
     }
   };
 
@@ -274,6 +276,7 @@ export default function ProfileScreen() {
         </View>
 
         <Button label="Terminar sessao" variant="outline" onPress={() => signOut()} style={{ marginTop: spacing.lg, marginBottom: spacing.xxl }} />
+      <LegalModal visible={legalOpen} onClose={() => setLegalOpen(false)} />
       </ScrollView>
 
       <IncidentCenterModal visible={incidentVisible} onClose={() => setIncidentVisible(false)} />

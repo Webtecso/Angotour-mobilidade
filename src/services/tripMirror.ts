@@ -75,6 +75,12 @@ export function mirrorCreateAndAssign(
         comfortPreferences: trip.comfortPreferences,
         splitCount: trip.splitCount,
         airportPickup: trip.airportPickup,
+        stops: (trip.stops ?? []).slice(0, 3).map((p) => ({
+          label: p.label,
+          address: p.address,
+          latitude: p.coordinates.latitude,
+          longitude: p.coordinates.longitude,
+        })),
         womenMode: preferFemale,
       };
       const created = await tripsApi.create(body);
@@ -123,6 +129,12 @@ export function mirrorCreateScheduled(trip: TripRequest): void {
         paymentMethodType: trip.paymentMethodType,
         cashNoteKz: trip.cashNoteKz,
         scheduledFor: trip.scheduledFor,
+        stops: (trip.stops ?? []).slice(0, 3).map((p) => ({
+          label: p.label,
+          address: p.address,
+          latitude: p.coordinates.latitude,
+          longitude: p.coordinates.longitude,
+        })),
       });
       m.remoteId = created.id;
     })
@@ -130,6 +142,14 @@ export function mirrorCreateScheduled(trip: TripRequest): void {
 }
 
 /** Id da viagem no servidor (existe depois de a viagem ser criada la). */
+/** Liga uma reserva ja existente no servidor a um id local (para poder cancelar e acompanhar). */
+export function mirrorAdopt(localId: string, remoteId: string): void {
+  if (mirrors.has(localId)) return;
+  const m: Mirror = { chain: Promise.resolve() };
+  m.remoteId = remoteId;
+  mirrors.set(localId, m);
+}
+
 export function mirrorRemoteId(localId: string): string | undefined {
   return mirrors.get(localId)?.remoteId;
 }

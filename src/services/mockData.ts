@@ -19,6 +19,9 @@ export const vehicleCategories: VehicleCategory[] = [
   { id: 'ango_aeroporto', name: 'Aeroporto', description: 'Mais espaco para malas', icon: 'airplane', tarifaBaseKz: 900, precoPorKmKz: 240, precoPorMinKz: 20, tarifaMinimaKz: 1500, velocidadeMediaKmh: 26, etaMinutes: 4, capacity: 4 },
   { id: 'ango_tour', name: 'Turismo', description: 'Motoristas preparados para turismo', icon: 'compass-outline', tarifaBaseKz: 1000, precoPorKmKz: 300, precoPorMinKz: 25, tarifaMinimaKz: 1700, velocidadeMediaKmh: 20, etaMinutes: 8, capacity: 4 },
   { id: 'ango_acessivel', name: 'Acessivel', description: 'Preparado para mobilidade reduzida', icon: 'wheelchair-accessibility', tarifaBaseKz: 700, precoPorKmKz: 220, precoPorMinKz: 18, tarifaMinimaKz: 1100, velocidadeMediaKmh: 20, etaMinutes: 8, capacity: 4 },
+  { id: 'ango_cavalo', name: 'Cavalo', description: 'Velocidade nobre, corrida agil', icon: 'horse', tarifaBaseKz: 500, precoPorKmKz: 180, precoPorMinKz: 15, tarifaMinimaKz: 800, velocidadeMediaKmh: 22, etaMinutes: 3, capacity: 4 },
+  { id: 'ango_bruxa', name: 'Bruxa', description: 'Uma viagem com magia', icon: 'broom', tarifaBaseKz: 700, precoPorKmKz: 230, precoPorMinKz: 20, tarifaMinimaKz: 1100, velocidadeMediaKmh: 22, etaMinutes: 4, capacity: 4 },
+  { id: 'ango_tapete', name: 'Tapete Magico', description: 'Luxo a voar sobre a cidade', icon: 'flare', tarifaBaseKz: 1000, precoPorKmKz: 320, precoPorMinKz: 28, tarifaMinimaKz: 1600, velocidadeMediaKmh: 24, etaMinutes: 6, capacity: 4 },
 ];
 
 export const homeGridCategoryIds: VehicleCategory['id'][] = [
@@ -182,4 +185,7 @@ export const CATEGORY_AC_GUARANTEED: Record<VehicleCategoryId, boolean> = {
   ango_aeroporto: true,
   ango_tour: true,
   ango_acessivel: true,
+  ango_cavalo: false,
+  ango_bruxa: false,
+  ango_tapete: false,
 };

@@ -7,6 +7,8 @@ import ComingSoonNotice from '../../components/common/ComingSoonNotice';
 import AnchorTabs from '../../components/common/AnchorTabs';
 import ReceiptModal from '../../components/trip/ReceiptModal';
 import { useTrip } from '../../contexts/TripContext';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback } from 'react';
 import { vehicleCategories, TripHistoryEntry } from '../../services/mockData';
 import { useTripHistory } from '../../hooks/useBackendData';
 import { colors, radius, spacing, typography } from '../../constants/theme';
@@ -32,7 +34,8 @@ function formatDate(dateIso: string) {
 }
 
 export default function TripHistoryScreen() {
-  const { scheduledTrips, cancelScheduledTrip } = useTrip();
+  const { scheduledTrips, cancelScheduledTrip, refreshScheduled } = useTrip();
+  useFocusEffect(useCallback(() => { void refreshScheduled(); }, []));
   const { data: history, loading, isRemote } = useTripHistory([]);
   const hasScheduled = scheduledTrips.length > 0;
 

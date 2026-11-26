@@ -3,7 +3,7 @@ import { ComfortPreferenceId, PaymentMethodType, PaymentState, SavedPlace, TripR
 import { computeChangeKz, defaultOrigin, estimateTrip } from '../services/mockData';
 import { CancellationRisk, recordCancellation } from '../services/cancellationStore';
 import { recordTripEvent } from '../services/tripEventStore';
-import { mirrorCancel, mirrorComplete, mirrorCreateAndAssign, mirrorStart, RealDriverAssignment, mirrorCreateScheduled, mirrorRemoteId } from '../services/tripMirror';
+import { mirrorCancel, mirrorComplete, mirrorCreateAndAssign, mirrorStart, RealDriverAssignment, mirrorCreateScheduled, mirrorRemoteId, mirrorAdopt } from '../services/tripMirror';
 import { tripsApi } from '../services/api';
 import { Alert } from 'react-native';
 import { connectTripSocket } from '../services/tripSocket';
@@ -51,8 +51,9 @@ interface TripContextValue {
   resetTripDraft: () => void;
   assignDriver: (preferFemaleDriver?: boolean, preferredDriverId?: string) => void;
   assignError: string | null;
-  scheduleTrip: () => TripRequest | null;
+  scheduleTrip: (scheduledFor: Date) => TripRequest | null;
   cancelScheduledTrip: (tripId: string) => void;
+  refreshScheduled: () => Promise<void>;
   beginRide: () => void;
   completeTrip: (actualDistanceKm?: number, paymentState?: PaymentState) => void;
   cancelTrip: (reason?: string) => Promise<CancellationRisk | undefined>;
@@ -235,19 +236,50 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const scheduleTrip: TripContextValue['scheduleTrip'] = () => {
-    let created: TripRequest | null = null;
-    setTripDraft((draft) => {
-      const trip = buildTripFromDraft(draft, 'searching_driver');
-      if (trip) {
-        created = trip;
-        setScheduledTrips((prev) => [trip, ...prev]);
-        mirrorCreateScheduled(trip);
-        recordTripEvent(trip.id, 'trip_created', { distanceKm: trip.distanceKm, priceKz: trip.priceKz }).catch(() => {});
+  const scheduleTrip: TripContextValue['scheduleTrip'] = (scheduledFor) => {
+    // reserva criada fora do setTripDraft: o retorno e imediato e nao duplica
+    const trip = buildTripFromDraft({ ...tripDraft, scheduledFor }, 'searching_driver');
+    if (!trip) return null;
+    setScheduledTrips((prev) => [trip, ...prev]);
+    mirrorCreateScheduled(trip);
+    recordTripEvent(trip.id, 'trip_created', { distanceKm: trip.distanceKm, priceKz: trip.priceKz }).catch(() => {});
+    return trip;
+  };
+
+  // Reservas abertas no servidor (sobrevivem a reiniciar a app).
+  const refreshScheduled = async () => {
+    try {
+      const rows = (await tripsApi.mine()) as any[];
+      const open = rows.filter((r) => r.status === 'searching_driver' && r.scheduledFor && new Date(r.scheduledFor).getTime() > Date.now() - 60 * 60 * 1000);
+      const known = new Set(scheduledTrips.map((t) => mirrorRemoteId(t.id)));
+      const add: TripRequest[] = [];
+      for (const r of open) {
+        if (known.has(r.id)) continue;
+        const localId = 'srv-' + r.id;
+        mirrorAdopt(localId, r.id);
+        const place = (p: any, tag: string) => ({ id: 'srv-' + tag + '-' + r.id, kind: 'custom', label: String(p?.label || p?.address || ''), address: String(p?.address || p?.label || ''), coordinates: { latitude: Number(p?.latitude), longitude: Number(p?.longitude) } });
+        add.push({
+          id: localId,
+          origin: place(r.origin, 'o'),
+          destination: place(r.destination, 'd'),
+          stops: (r.stops ?? []).map((s: any, i: number) => place(s, 's' + i)),
+          categoryId: r.categoryId,
+          distanceKm: Number(r.distanceKm ?? 0),
+          durationMinutes: Number(r.durationMinutes ?? 0),
+          etaMinutes: Number(r.etaMinutes ?? 0),
+          priceKz: Number(r.priceKz ?? 0),
+          originalPriceKz: Number(r.priceKz ?? 0),
+          scheduledFor: new Date(r.scheduledFor).toISOString(),
+          paymentMethodType: r.paymentMethodType ?? 'wallet',
+          status: 'searching_driver',
+        } as any);
       }
-      return draft;
-    });
-    return created;
+      if (add.length > 0) {
+        setScheduledTrips((prev) => [...add.filter((a) => !prev.some((p) => p.id === a.id)), ...prev].sort((a, b) => String(a.scheduledFor).localeCompare(String(b.scheduledFor))));
+      }
+    } catch {
+      // sem rede: mantem o que ja esta na lista
+    }
   };
 
   const cancelScheduledTrip: TripContextValue['cancelScheduledTrip'] = (tripId) => {
@@ -393,6 +425,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       assignError,
       scheduleTrip,
       cancelScheduledTrip,
+      refreshScheduled,
       beginRide,
       completeTrip,
       cancelTrip,

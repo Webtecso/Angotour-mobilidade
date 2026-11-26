@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useState } from 'react';
-import { Alert, FlatList, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import ScreenContainer from '../../components/common/ScreenContainer';
@@ -26,6 +26,9 @@ const CATEGORY_COLORS: Record<VehicleCategory['id'], string> = {
   ango_executivo: colors.amber,
   ango_family: colors.pink,
   ango_moto: colors.primaryDark,
+  ango_cavalo: colors.primaryDark,
+  ango_bruxa: colors.primaryDark,
+  ango_tapete: colors.primaryDark,
   ango_grupo: colors.pinkDark,
   ango_aeroporto: colors.teal,
   ango_tour: colors.amber,
@@ -44,6 +47,9 @@ const CATEGORY_IMAGES: Partial<Record<VehicleCategory['id'], number>> = {
   ango_executivo: require('../../../assets/images/car-executivo.png'),
   ango_family: require('../../../assets/images/car-familia.png'),
   ango_moto: require('../../../assets/images/car-moto.png'),
+  ango_cavalo: require('../../../assets/images/cavalo.png'),
+  ango_bruxa: require('../../../assets/images/bruxa.png'),
+  ango_tapete: require('../../../assets/images/tapete.png'),
   ango_grupo: require('../../../assets/images/car-grupo.png'),
   ango_aeroporto: require('../../../assets/images/car-aeroporto.png'),
   ango_tour: require('../../../assets/images/car-turismo.png'),
@@ -179,9 +185,9 @@ export default function ChooseCategoryScreen({ navigation }: Props) {
     }
 
     setScheduledFor(scheduled);
-    const created = scheduleTrip();
+    const created = scheduleTrip(scheduled);
     if (!created) {
-      Alert.alert('Nao foi possivel agendar', 'Confirma o destino e a categoria escolhida.');
+      Alert.alert('Nao foi possivel agendar', !destination ? 'Falta o destino.' : !selectedCategoryId ? 'Falta escolher a categoria.' : 'Nao foi possivel criar a reserva. Tenta outra vez.');
       return;
     }
 
@@ -206,6 +212,7 @@ export default function ChooseCategoryScreen({ navigation }: Props) {
 
   return (
     <ScreenContainer style={styles.container} edges={['left', 'right']}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}>
       <View style={styles.mapArea}>
         <LeafletMapView
           origin={origin.coordinates}
@@ -249,7 +256,7 @@ export default function ChooseCategoryScreen({ navigation }: Props) {
           </View>
         ) : null}
 
-        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 220 }}>
         <FlatList
           data={vehicleCategories}
           keyExtractor={(item) => item.id}
@@ -452,6 +459,8 @@ export default function ChooseCategoryScreen({ navigation }: Props) {
           />
         </View>
       </View>
+
+      </KeyboardAvoidingView>
 
       <PriceBreakdownModal
         visible={priceModalVisible}

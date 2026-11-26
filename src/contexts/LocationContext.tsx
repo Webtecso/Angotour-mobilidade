@@ -2,6 +2,7 @@
 import * as Location from 'expo-location';
 import { SavedPlace } from '../types';
 import { defaultOrigin } from '../services/mockData';
+import { reverseLabel } from '../services/backendApi';
 
 interface LocationContextValue {
   currentPlace: SavedPlace;
@@ -14,10 +15,12 @@ const LocationContext = createContext<LocationContextValue | undefined>(undefine
 
 async function resolvePlaceFromCoords(latitude: number, longitude: number): Promise<SavedPlace> {
   try {
-    const [result] = await Location.reverseGeocodeAsync({ latitude, longitude });
-    const address = result
-      ? [result.street, result.district ?? result.city].filter(Boolean).join(', ')
-      : 'Localizacao atual';
+    let address = '';
+    try { address = (await reverseLabel({ latitude, longitude })) ?? ''; } catch { address = ''; }
+    if (!address) {
+      const [result] = await Location.reverseGeocodeAsync({ latitude, longitude });
+      address = result ? [result.street, result.district ?? result.city].filter(Boolean).join(', ') : 'Localizacao atual';
+    }
 
     return {
       id: 'origin-current',

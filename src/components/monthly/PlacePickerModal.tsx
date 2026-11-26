@@ -4,7 +4,7 @@ import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import RideMapView from '../trip/RideMapView';
 import { Coordinates } from '../../types';
-import { reverseLabel } from '../../services/backendApi';
+import { reverseLabel, searchPlaces } from '../../services/backendApi';
 
 export interface PickedPlace { label: string; latitude: number; longitude: number }
 
@@ -17,7 +17,6 @@ interface Props {
 }
 
 const LUANDA: Coordinates = { latitude: -8.8383, longitude: 13.2344 };
-const FALLBACK_LABEL = 'Local escolhido no mapa';
 const inAngola = (lat: number, lng: number) => lat >= -18.5 && lat <= -4.2 && lng >= 11.4 && lng <= 24.1;
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
@@ -59,6 +58,7 @@ export default function PlacePickerModal({ visible, title, initial, onClose, onC
   const [locating, setLocating] = useState(false);
   const [picked, setPicked] = useState(false);
   const reqRef = useRef(0);
+  const chosenRef = useRef(false);
   const moveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const resolveLabel = async (c: Coordinates) => {
@@ -88,6 +88,7 @@ export default function PlacePickerModal({ visible, title, initial, onClose, onC
         if (!silent) setLabel('Nao foi possivel obter a localizacao');
         return;
       }
+      if (silent && chosenRef.current) return;
       const c = { latitude: p.coords.latitude, longitude: p.coords.longitude };
       setStart(c);
       setCenter(c);
@@ -104,6 +105,7 @@ export default function PlacePickerModal({ visible, title, initial, onClose, onC
     if (!visible) return;
     setQuery(''); setResults([]); setSearched(false);
     reqRef.current++;
+    chosenRef.current = false;
     setResolving(false);
     if (initial) {
       const c = { latitude: initial.latitude, longitude: initial.longitude };
@@ -129,13 +131,11 @@ export default function PlacePickerModal({ visible, title, initial, onClose, onC
     setSearching(true);
     setSearched(true);
     try {
-      const raw = await withTimeout(Location.geocodeAsync(/angola/i.test(term) ? term : term + ', Angola'), 8000);
-      const ok = raw.filter((r) => inAngola(r.latitude, r.longitude)).slice(0, 4);
-      const out: PickedPlace[] = [];
-      for (const r of ok) {
-        const l = await labelFor({ latitude: r.latitude, longitude: r.longitude });
-        out.push({ label: l === FALLBACK_LABEL ? term : l, latitude: r.latitude, longitude: r.longitude });
-      }
+      const found = await withTimeout(searchPlaces(term), 12000);
+      const out: PickedPlace[] = found
+        .filter((r) => inAngola(r.coordinates.latitude, r.coordinates.longitude))
+        .slice(0, 6)
+        .map((r) => ({ label: r.label, latitude: r.coordinates.latitude, longitude: r.coordinates.longitude }));
       setResults(out);
     } catch {
       setResults([]);
@@ -148,6 +148,7 @@ export default function PlacePickerModal({ visible, title, initial, onClose, onC
     const c = { latitude: p.latitude, longitude: p.longitude };
     reqRef.current++;
     setResolving(false);
+    chosenRef.current = true;
     setResults([]); setSearched(false);
     setStart(c); setCenter(c); setLabel(p.label); setPicked(true);
   };
@@ -163,7 +164,7 @@ export default function PlacePickerModal({ visible, title, initial, onClose, onC
 
         <View style={s.searchRow}>
           <TouchableOpacity onPress={search}><Ionicons name="search" size={18} color={C.muted} /></TouchableOpacity>
-          <TextInput style={s.searchInput} value={query} onChangeText={setQuery} onSubmitEditing={search}
+          <TextInput style={s.searchInput} value={query} onChangeText={(t) => { chosenRef.current = true; setQuery(t); }} onSubmitEditing={search}
             placeholder="Bairro, rua ou referencia" placeholderTextColor={C.muted} returnKeyType="search"
             autoCorrect={false} spellCheck={false} autoComplete="off" textContentType="none" autoCapitalize="words" />
           {searching ? <ActivityIndicator color={C.primary} /> : null}

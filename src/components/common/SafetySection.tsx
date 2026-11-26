@@ -41,7 +41,7 @@ export default function SafetySection() {
       <View style={styles.row}>
         <View style={styles.rowTextArea}>
           <Text style={styles.rowTitle}>Partilhar viagem automaticamente</Text>
-          <Text style={styles.rowSubtitle}>Envia o percurso ao teu contacto de emergencia assim que a viagem comeca.</Text>
+          <Text style={styles.rowSubtitle}>Abre uma mensagem ao teu contacto de emergencia, com o link para acompanhar a viagem, assim que ela comeca.</Text>
         </View>
         <Switch
           value={autoShareTripEnabled}

@@ -133,6 +133,7 @@ export const tripsApi = {
     scheduledFor?: string;
     paymentMethodType?: string;
     cashNoteKz?: number;
+    stops?: TripPointBody[];
   }) => request<RemoteTrip>('/trips', { method: 'POST', body, auth: true }),
   assignDriver: (id: string, opts: { preferDriverId?: string; preferPhones?: string[] } = {}) =>
     request<RemoteTrip>(`/trips/${id}/assign-driver`, { method: 'PATCH', body: opts, auth: true }),
@@ -240,3 +241,15 @@ export const identityDocumentsApi = {
     request<{ type: string; status: string }>('/identity-documents/' + type, { method: 'POST', body: { imageBase64 }, auth: true }),
 };
 
+// Sessao recusada pelo servidor (token invalido ou utilizador inexistente): quem estiver a ouvir termina a sessao.
+let unauthorizedHandler: (() => void) | null = null;
+let unauthorizedFired = false;
+export function setUnauthorizedHandler(fn: (() => void) | null): void {
+  unauthorizedHandler = fn;
+  unauthorizedFired = false;
+}
+export function notifyUnauthorized(): void {
+  if (unauthorizedFired || !unauthorizedHandler) return;
+  unauthorizedFired = true;
+  unauthorizedHandler();
+}

@@ -53,7 +53,10 @@ export type VehicleCategoryId =
   | 'ango_aeroporto'
   | 'ango_tour'
   | 'ango_moto'
-  | 'ango_acessivel';
+  | 'ango_acessivel'
+  | 'ango_cavalo'
+  | 'ango_bruxa'
+  | 'ango_tapete';
 
 export interface VehicleCategory {
   id: VehicleCategoryId;

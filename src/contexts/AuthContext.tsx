@@ -3,7 +3,7 @@ import { fetchMyPoints } from '../services/backendApi';
 import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User } from '../types';
-import { authApi, setToken, getToken } from '../services/api';
+import { authApi, setToken, getToken, setUnauthorizedHandler } from '../services/api';
 import { profileRemote, pushRemote } from '../services/backendApi';
 import { registerForPushNotificationsAsync } from '../services/pushNotifications';
 
@@ -126,6 +126,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setPendingPhone(null);
   };
+
+  // Se o servidor recusar a sessao (401), termina-a e volta ao login em vez de mostrar ecras vazios.
+  useEffect(() => {
+    setUnauthorizedHandler(() => { void signOut(); });
+    return () => setUnauthorizedHandler(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /**
    * Verificacao de identidade: o BI e a selfie ja foram enviados ao servidor pelo modal.

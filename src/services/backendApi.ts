@@ -1,5 +1,5 @@
 import { API_BASE_URL } from '../constants/env';
-import { getToken } from './api';
+import { getToken, notifyUnauthorized } from './api';
 import { Coordinates, SavedPlace, VehicleCategoryId } from '../types';
 import { TripHistoryEntry } from './mockData';
 
@@ -13,6 +13,7 @@ async function call<T>(path: string, method: 'GET' | 'POST' | 'PATCH' = 'GET', b
   const isJson = response.headers.get('content-type')?.includes('application/json');
   const data = isJson ? await response.json() : undefined;
   if (!response.ok) {
+    if (response.status === 401 && token) notifyUnauthorized();
     const message = data?.message ?? `Erro ${response.status}`;
     throw new Error(Array.isArray(message) ? message.join(', ') : message);
   }
@@ -167,4 +168,9 @@ export async function searchPlaces(q: string): Promise<SavedPlace[]> {
 export async function reverseLabel(c: Coordinates): Promise<string | null> {
   const r = await call<{ label: string | null }>('/destinations/reverse?lat=' + c.latitude + '&lng=' + c.longitude);
   return r?.label ?? null;
+}
+
+/** "Vai Comigo": link publico para acompanhar a viagem em tempo real (o servidor so aceita a viagem do proprio passageiro). */
+export async function createTripShare(tripId: string): Promise<{ token: string; url: string }> {
+  return call<{ token: string; url: string }>('/trips/' + tripId + '/share', 'POST');
 }

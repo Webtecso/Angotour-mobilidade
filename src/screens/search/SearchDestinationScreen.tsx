@@ -104,7 +104,7 @@ export default function SearchDestinationScreen({ navigation }: Props) {
       setIsSearching(true);
       searchPlaces(term)
         .then((r) => { if (alive) setRemote(r); })
-        .catch(() => { if (alive) setRemote([]); })
+        .catch((e) => { console.warn('searchPlaces falhou:', e && e.message ? e.message : e); if (alive) setRemote([]); })
         .finally(() => { if (alive) setIsSearching(false); });
     }, 600);
     return () => { alive = false; clearTimeout(t); };

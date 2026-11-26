@@ -223,7 +223,16 @@ window.setState = function (s) {
     map.setView([c.latitude, c.longitude], s.zoom || 14, { animate: false });
     inited = true;
     if (s.interactive) {
-      map.on('moveend', function () { var m = map.getCenter(); post({ type: 'center', latitude: m.lat, longitude: m.lng }); });
+      map.on('moveend', function () { if (window.__prog) return; var m = map.getCenter(); post({ type: 'center', latitude: m.lat, longitude: m.lng }); });
+    }
+  }
+
+  if (inited && s.center && s.interactive) {
+    var mc = map.getCenter();
+    if (Math.abs(mc.lat - s.center.latitude) > 0.00002 || Math.abs(mc.lng - s.center.longitude) > 0.00002) {
+      window.__prog = true;
+      map.setView([s.center.latitude, s.center.longitude], map.getZoom(), { animate: false });
+      window.__prog = false;
     }
   }
 
