@@ -174,3 +174,9 @@ export async function reverseLabel(c: Coordinates): Promise<string | null> {
 export async function createTripShare(tripId: string): Promise<{ token: string; url: string }> {
   return call<{ token: string; url: string }>('/trips/' + tripId + '/share', 'POST');
 }
+
+/** Ponto Seguro: pontos de recolha conhecidos (geridos no painel) perto de uma posicao. */
+export interface PickupPoint { id: string; title: string; address: string; kind: string; distanceKm: number; coordinates: Coordinates }
+export async function fetchPickupPoints(c: Coordinates): Promise<PickupPoint[]> {
+  return call<PickupPoint[]>('/pickup-points/nearby?lat=' + c.latitude + '&lng=' + c.longitude);
+}

@@ -101,6 +101,8 @@ export default function ChooseCategoryScreen({ navigation }: Props) {
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('now');
   const [dateInput, setDateInput] = useState('');
   const [timeInput, setTimeInput] = useState('');
+  const [roundTrip, setRoundTrip] = useState(false);
+  const [returnTimeInput, setReturnTimeInput] = useState('');
   const [priceModalVisible, setPriceModalVisible] = useState(false);
   const [nightModalVisible, setNightModalVisible] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
@@ -133,7 +135,7 @@ export default function ChooseCategoryScreen({ navigation }: Props) {
   const paymentChangeKz = paymentMethodType === 'cash' && cashNoteKz ? computeChangeKz(selectedEstimate.priceKz, cashNoteKz) : null;
 
   const airportSelectionComplete = !isAirportTrip || (!!airportPickup?.terminal && !!airportPickup?.pickupPoint);
-  const scheduleIsValid = (scheduleMode === 'now' || (isValidDateInput(dateInput) && isValidTimeInput(timeInput))) && airportSelectionComplete;
+  const scheduleIsValid = (scheduleMode === 'now' || (isValidDateInput(dateInput) && isValidTimeInput(timeInput) && (!roundTrip || isValidTimeInput(returnTimeInput)))) && airportSelectionComplete;
   const showSafePickupNotice = !isAirportTrip && scheduleMode === 'now' && isNightTime();
 
   const handleCategoryPress = (category: VehicleCategory) => selectCategory(category.id);
@@ -143,6 +145,8 @@ export default function ChooseCategoryScreen({ navigation }: Props) {
     if (mode === 'now') {
       setDateInput('');
       setTimeInput('');
+      setRoundTrip(false);
+      setReturnTimeInput('');
     }
   };
 
@@ -184,8 +188,17 @@ export default function ChooseCategoryScreen({ navigation }: Props) {
       return;
     }
 
+    let returnAt: Date | undefined;
+    if (roundTrip) {
+      const r = buildScheduledDate(dateInput, returnTimeInput);
+      if (!r || r.getTime() <= scheduled.getTime()) {
+        Alert.alert('Hora de regresso invalida', 'A hora do regresso tem de ser depois da hora de ida.');
+        return;
+      }
+      returnAt = r;
+    }
     setScheduledFor(scheduled);
-    const created = scheduleTrip(scheduled);
+    const created = scheduleTrip(scheduled, returnAt);
     if (!created) {
       Alert.alert('Nao foi possivel agendar', !destination ? 'Falta o destino.' : !selectedCategoryId ? 'Falta escolher a categoria.' : 'Nao foi possivel criar a reserva. Tenta outra vez.');
       return;
@@ -194,7 +207,7 @@ export default function ChooseCategoryScreen({ navigation }: Props) {
     resetTripDraft();
     Alert.alert(
       'Viagem agendada',
-      `A tua viagem foi agendada para ${scheduled.toLocaleDateString('pt-AO')} as ${scheduled.toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' })}. Acompanha em Viagens > Agendadas.`,
+      `A tua viagem foi agendada para ${scheduled.toLocaleDateString('pt-AO')} as ${scheduled.toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' })}.${returnAt ? ' Regresso as ' + returnAt.toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' }) + '. Total das duas viagens: ' + (selectedEstimate.priceKz * 2).toLocaleString('pt-AO') + ' Kz.' : ''} Acompanha em Viagens > Agendadas.`,
       [{ text: 'Entendido', onPress: () => navigation.popToTop() }]
     );
   };
@@ -436,6 +449,20 @@ export default function ChooseCategoryScreen({ navigation }: Props) {
             <View style={{ flex: 1, marginLeft: spacing.xs }}>
               <Input placeholder="HH:MM" value={timeInput} onChangeText={(t) => setTimeInput(formatTimeInput(t))} keyboardType="number-pad" maxLength={5} />
             </View>
+          </View>
+        ) : null}
+
+        {scheduleMode === 'later' ? (
+          <View style={{ marginHorizontal: spacing.lg, marginBottom: spacing.xs }}>
+            <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} activeOpacity={0.8} onPress={() => setRoundTrip((v) => !v)}>
+              <Ionicons name={roundTrip ? 'checkbox' : 'square-outline'} size={20} color={roundTrip ? colors.primary : colors.textSecondary} />
+              <Text style={{ color: colors.textPrimary, marginLeft: 8 }}>Agendar tambem o regresso</Text>
+            </TouchableOpacity>
+            {roundTrip ? (
+              <View style={{ marginTop: spacing.xs }}>
+                <Input placeholder="Hora do regresso HH:MM" value={returnTimeInput} onChangeText={(t) => setReturnTimeInput(formatTimeInput(t))} keyboardType="number-pad" maxLength={5} />
+              </View>
+            ) : null}
           </View>
         ) : null}
 

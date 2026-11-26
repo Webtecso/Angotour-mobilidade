@@ -51,7 +51,7 @@ interface TripContextValue {
   resetTripDraft: () => void;
   assignDriver: (preferFemaleDriver?: boolean, preferredDriverId?: string) => void;
   assignError: string | null;
-  scheduleTrip: (scheduledFor: Date) => TripRequest | null;
+  scheduleTrip: (scheduledFor: Date, returnAt?: Date) => TripRequest | null;
   cancelScheduledTrip: (tripId: string) => void;
   refreshScheduled: () => Promise<void>;
   beginRide: () => void;
@@ -236,13 +236,23 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const scheduleTrip: TripContextValue['scheduleTrip'] = (scheduledFor) => {
+  const scheduleTrip: TripContextValue['scheduleTrip'] = (scheduledFor, returnAt) => {
     // reserva criada fora do setTripDraft: o retorno e imediato e nao duplica
     const trip = buildTripFromDraft({ ...tripDraft, scheduledFor }, 'searching_driver');
     if (!trip) return null;
     setScheduledTrips((prev) => [trip, ...prev]);
     mirrorCreateScheduled(trip);
     recordTripEvent(trip.id, 'trip_created', { distanceKm: trip.distanceKm, priceKz: trip.priceKz }).catch(() => {});
+    // returnTrip: Ida & Volta, segunda reserva com origem e destino trocados (sem paragens)
+    if (returnAt && tripDraft.destination) {
+      const back = buildTripFromDraft({ ...tripDraft, origin: tripDraft.destination, destination: tripDraft.origin, stops: [], scheduledFor: returnAt }, 'searching_driver');
+      if (back) {
+        back.id = back.id + '-r';
+        setScheduledTrips((prev) => [back, ...prev]);
+        mirrorCreateScheduled(back);
+        recordTripEvent(back.id, 'trip_created', { distanceKm: back.distanceKm, priceKz: back.priceKz }).catch(() => {});
+      }
+    }
     return trip;
   };
 

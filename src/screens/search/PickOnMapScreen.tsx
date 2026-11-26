@@ -1,5 +1,5 @@
-﻿import React, { useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+﻿import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Location from 'expo-location';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,7 +8,7 @@ import Button from '../../components/common/Button';
 import LeafletMapView from '../../components/trip/RideMapView';
 import { useTrip } from '../../contexts/TripContext';
 import { haversineDistanceKm } from '../../utils/geo';
-import { reverseLabel } from '../../services/backendApi';
+import { reverseLabel, fetchPickupPoints, PickupPoint } from '../../services/backendApi';
 import { Coordinates } from '../../types';
 import { HomeStackParamList } from '../../navigation/types';
 import { colors, radius, spacing, typography } from '../../constants/theme';
@@ -29,6 +29,22 @@ export default function PickOnMapScreen({ navigation, route }: Props) {
   );
   const [isResolving, setIsResolving] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
+  const [safePoints, setSafePoints] = useState<PickupPoint[]>([]);
+
+  // Ponto Seguro: so para a partida; procura pontos conhecidos perto do pin (com pausa).
+  useEffect(() => {
+    if (target !== 'origin') return;
+    let alive = true;
+    const t = setTimeout(() => {
+      fetchPickupPoints(center).then((r) => { if (alive) setSafePoints(r); }).catch(() => { if (alive) setSafePoints([]); });
+    }, 700);
+    return () => { alive = false; clearTimeout(t); };
+  }, [center.latitude, center.longitude, target]);
+
+  const pickSafePoint = (p: PickupPoint) => {
+    setOrigin({ id: 'safe-' + p.id, kind: 'custom' as const, label: p.title, address: p.address, coordinates: p.coordinates });
+    navigation.goBack();
+  };
 
   const resolveAddress = async (coords: Coordinates) => {
     const id = ++reqSeq;
@@ -115,6 +131,18 @@ export default function PickOnMapScreen({ navigation, route }: Props) {
       </View>
 
       <View style={styles.bottomCard}>
+        {target === 'origin' && safePoints.length > 0 ? (
+          <View style={styles.safeBox}>
+            <Text style={styles.safeTitle}>Pontos seguros perto</Text>
+            {safePoints.slice(0, 3).map((p) => (
+              <TouchableOpacity key={p.id} style={styles.safeRow} activeOpacity={0.8} onPress={() => pickSafePoint(p)}>
+                <Ionicons name="flag-outline" size={16} color={colors.primary} />
+                <Text style={styles.safeName} numberOfLines={1}>{p.title}</Text>
+                <Text style={styles.safeDist}>{Math.round(p.distanceKm * 1000)} m</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
         <Text style={styles.hint}>Arrasta o mapa para mover o pin, ou escreve/usa o GPS acima</Text>
         <View style={styles.addressRow}>
           <Ionicons name="location-outline" size={18} color={colors.primary} />
@@ -140,6 +168,11 @@ const styles = StyleSheet.create({
   gpsButtonWrapper: { position: 'absolute', bottom: 200, left: spacing.lg, right: spacing.lg },
   bottomCard: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: colors.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing.lg },
   hint: { ...typography.caption, color: colors.textMuted, textAlign: 'center', marginBottom: spacing.sm },
+  safeBox: { marginBottom: spacing.sm },
+  safeTitle: { ...typography.captionMedium, color: colors.textSecondary, marginBottom: 4 },
+  safeRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
+  safeName: { ...typography.bodyMedium, color: colors.textPrimary, flex: 1, marginLeft: spacing.xs },
+  safeDist: { ...typography.caption, color: colors.textMuted },
   addressRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing.md },
   addressText: { ...typography.bodyMedium, color: colors.textPrimary, marginLeft: spacing.xs, flex: 1 },
 });
